@@ -1,4 +1,5 @@
 # Castle
+<img width="1280" height="924" alt="image" src="https://github.com/user-attachments/assets/55f09fc7-8238-4c53-ba31-7399ce9579ab" />
 
 Masonry destruction simulation: one rigid body per intact structure, headless
 physics via [Jolt](https://github.com/jrouwe/JoltPhysics) (through
