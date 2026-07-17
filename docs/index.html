@@ -155,6 +155,51 @@ function roster() {
   return out;
 }
 
+/* a castle built in the plan editor, baked in so it's always in the roster
+   instead of needing to be loaded each session (originally Tower_05.json) */
+custom['Tower 05'] = {
+  "name": "Tower 05", "camera": 34,
+  "_blurb": "four towers and a keep, but the west curtain is wide open, and the magazine is stacked at the northwest tower.",
+  "defaults": { "thickness": 0.9, "rings": 2, "courses": 24, "courseH": 0.42, "brickL": 0.6 },
+  "elements": [
+    { "type": "tower", "id": "keep", "shape": "square", "cx": 0, "cz": 0, "side": 5.2, "crenels": true,
+      "openings": [{ "x": -2.6, "z": 0, "w": 1.8, "from": 0, "to": 4 }] },
+    { "type": "tower", "id": "tower1", "shape": "square", "cx": -5, "cz": -10, "side": 5, "crenels": true,
+      "openings": [], "courses": 18 },
+    { "type": "tower", "id": "tower2", "shape": "square", "cx": -5, "cz": 10, "side": 5, "crenels": true,
+      "openings": [], "courses": 18 },
+    { "type": "tower", "id": "tower3", "shape": "square", "cx": 5, "cz": -15, "side": 5, "crenels": true,
+      "openings": [] },
+    { "type": "tower", "id": "tower4", "shape": "square", "cx": 5, "cz": 15, "side": 5, "crenels": true,
+      "openings": [] },
+    { "type": "wall", "path": [[-5, 12.5], [-5, 15], [2.5, 15]], "closed": false, "crenels": true,
+      "openings": [], "courses": 12 },
+    { "type": "wall", "path": [[5, 12.5], [5, -12.5]], "closed": false, "crenels": true,
+      "openings": [], "courses": 18 },
+    { "type": "wall", "path": [[2.5, -15], [-5, -15], [-5, -12.5]], "closed": false, "crenels": true,
+      "openings": [], "courses": 12 },
+    { "type": "wall", "path": [[-2.5, -10], [0, -10], [0, -2.5]], "closed": false, "crenels": true,
+      "openings": [], "courses": 12 },
+    { "type": "wall", "path": [[-2.5, 10], [0, 10], [0, 2.5]], "closed": false, "crenels": true,
+      "openings": [], "courses": 12 },
+    { "type": "banner", "on": "tower3" },
+    { "type": "keg", "x": -6.5, "z": -8.5,  "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -6.5, "z": -11.5, "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -6.5, "z": -10,   "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -6,   "z": -8.5,  "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -5.5, "z": -8.5,  "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -5,   "z": -8.5,  "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -6.5, "z": -10.5, "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -6.5, "z": -11,   "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -4.5, "z": -11.5, "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -4,   "z": -11.5, "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -4,   "z": -12.5, "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -3,   "z": -12.5, "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -2.5, "z": -11.5, "y": 0.45, "spec": {} },
+    { "type": "keg", "x": -2.5, "z": -11,   "y": 0.45, "spec": {} }
+  ]
+};
+
 /* ---------------- physics world ------------------------------------- */
 function makeWorld() {
   const of = new Jolt.ObjectLayerPairFilterTable(NUM_LAYERS);
@@ -687,6 +732,11 @@ const ICON = {
               `<path d="M7 13 H9 M15 13 H17"/><path d="M2.5 20.5 H21.5"/>` +
               `<path d="M10.6 20.5 v-3 a1.4 1.4 0 0 1 2.8 0 v3"/><path d="M12 20.5 v-3.8"/>`),
   custom: svg(`<path d="M8 3 V21"/><path d="M8 4 h8 l-2.4 3 2.4 3 h-8 Z"/>`),
+  'Tower 05': svg(`<path d="${battlement(0.5, 4.5, 8, 20.5, 2)}"/>` +
+                  `<path d="${battlement(6.5, 10.5, 6, 20.5, 2)}"/>` +
+                  `<path d="${battlement(12.5, 16.5, 6, 20.5, 2)}"/>` +
+                  `<path d="${battlement(18.5, 22.5, 8, 20.5, 2)}"/>` +
+                  `<circle cx="2.5" cy="17.3" r="1.1" fill="currentColor" stroke="none"/>`),
   locked: svg(`<rect x="8" y="12" width="8" height="7" rx="1.4"/>` +
               `<path d="M9.8 12 v-2 a2.2 2.2 0 0 1 4.4 0 v2"/>`),
 
@@ -701,7 +751,7 @@ const ICON = {
               `<path d="M5.6 20 H10.2"/>` +
               `<path d="M13.4 9.6 Q18 6.6 20 11" stroke-dasharray="1.6 2"/>`),
 };
-const castleIcon = e => e.kind === 'builtin' ? (ICON[e.id] || ICON.custom) : ICON.custom;
+const castleIcon = e => ICON[e.id] || ICON.custom;
 
 /* ---------------- toast (load feedback) ------------------------------ */
 let noteTimer = 0;
