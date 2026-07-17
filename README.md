@@ -1,11 +1,12 @@
 # Castle
 <img width="1280" height="924" alt="image" src="https://github.com/user-attachments/assets/55f09fc7-8238-4c53-ba31-7399ce9579ab" />
 
-Masonry destruction simulation: one rigid body per intact structure, headless
-physics via [Jolt](https://github.com/jrouwe/JoltPhysics) (through
-[jolt-physics](https://www.npmjs.com/package/jolt-physics) in Node, no
-renderer required), with an optional browser viewer for watching sieges play
-out.
+Masonry destruction game: one rigid body per intact structure, simulated with
+[Jolt](https://github.com/jrouwe/JoltPhysics) (through
+[jolt-physics](https://www.npmjs.com/package/jolt-physics)) and played
+through the browser viewer, where you aim and fire on a live siege. The
+underlying sim also runs headless in Node for testing and tuning, with no
+renderer required — but the viewer is the game.
 
 <img width="1280" height="1024" alt="image" src="https://github.com/user-attachments/assets/a76f7ec2-8bcb-473e-8b1d-b920a8eb5bd1" />
 
@@ -29,18 +30,27 @@ what broke, and what was learned along the way.
 npm install
 ```
 
-## Running
+## Playing
 
 ```
-npm start        # node serve.mjs   -> serves the browser viewer at http://localhost:8080
-npm run control   # node control.mjs -> headless: build towers, fire nothing, confirm they stand
-npm run siege     # node siege.plans.mjs -> headless: build + bombard a plan, print the siege log
-npm run plans     # node plans.test.mjs  -> headless: sanity-check all four plans stand still
-npm run cannon    # node cannon.mjs  -> headless: single fixed-aim shot test
-npm run tune      # node tune.mjs    -> headless: sweep tuning constants (crater/blast radius, etc.)
+npm start
 ```
 
-For the browser viewer, run `npm start` and open `http://localhost:8080`.
+Then open `http://localhost:8080` in a browser. Aim, fire, and watch the
+siege play out.
+
+## Headless tools
+
+The sim also runs without a renderer, which is how it's tested and tuned —
+not how it's meant to be played.
+
+```
+npm run control   # node control.mjs -> build towers, fire nothing, confirm they stand
+npm run siege     # node siege.plans.mjs -> build + bombard a plan, print the siege log
+npm run plans     # node plans.test.mjs  -> sanity-check all four plans stand still
+npm run cannon    # node cannon.mjs  -> single fixed-aim shot test
+npm run tune      # node tune.mjs    -> sweep tuning constants (crater/blast radius, etc.)
+```
 
 ## Layout
 
