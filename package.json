@@ -1,0 +1,22 @@
+{
+  "name": "castle_003",
+  "version": "1.0.0",
+  "description": "masonry destruction: one rigid body per intact structure",
+  "main": "index.js",
+  "scripts": {
+    "start": "node serve.mjs",
+    "control": "node control.mjs",
+    "siege": "node siege.plans.mjs",
+    "plans": "node plans.test.mjs",
+    "cannon": "node cannon.mjs",
+    "tune": "node tune.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "jolt-physics": "^1.1.0",
+    "three": "^0.185.1"
+  }
+}
