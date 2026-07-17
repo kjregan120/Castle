@@ -30,6 +30,11 @@ what broke, and what was learned along the way.
 npm install
 ```
 
+This is required even just to play — the browser viewer has no CDN
+dependency, it loads `three` and `jolt-physics` straight out of
+`node_modules` (served by `serve.mjs`), so they must be installed locally
+first.
+
 ## Playing
 
 ```
