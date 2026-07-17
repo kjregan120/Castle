@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>siege · plan editor</title>
+<style>
+  :root{
+    --ink:#1c2530; --ink2:#5b6b7c; --line:#c6d2dc; --line2:#d5dee6;
+    --panel:#ffffff; --field:#eef3f8; --accent:#2f6fb0; --accent-bg:#cfe4f7;
+    --stone:#b0a894; --powder:#a8482f; --ok:#3c7a3c; --grid:#dbe4ec;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--ink);background:#e7eef4;overflow:hidden}
+  button,input,select{font:inherit;color:var(--ink)}
+  .app{display:grid;grid-template-columns:52px 1fr 260px;grid-template-rows:46px 1fr;height:100%}
+
+  /* top bar spans all columns */
+  .bar{grid-column:1/4;display:flex;align-items:center;gap:10px;padding:0 12px;
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  .bar b{letter-spacing:.14em}
+  .bar .sp{flex:1}
+  .bar input.name{width:190px;padding:5px 8px;border:1px solid var(--line);border-radius:4px;background:var(--field)}
+  .act{padding:6px 11px;border:1px solid var(--line);border-radius:4px;background:var(--field);cursor:pointer}
+  .act:hover{border-color:var(--accent)}
+  .act.go{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  /* left tool rail */
+  .rail{background:var(--panel);border-right:1px solid var(--line);padding:8px 6px;
+    display:flex;flex-direction:column;gap:6px;align-items:center}
+  .tool{width:38px;height:38px;border:1px solid var(--line);border-radius:6px;background:var(--field);
+    cursor:pointer;display:grid;place-items:center;position:relative}
+  .tool:hover{border-color:var(--accent)}
+  .tool.on{background:var(--accent-bg);border-color:var(--accent)}
+  .tool svg{width:20px;height:20px}
+  .tool .k{position:absolute;bottom:1px;right:3px;font-size:9px;color:var(--ink2)}
+
+  /* canvas */
+  .stage{position:relative;overflow:hidden;background:#eef3f7}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  .hint{position:absolute;left:12px;bottom:10px;color:var(--ink2);
+    background:#ffffffcc;border:1px solid var(--line2);border-radius:5px;padding:5px 9px}
+
+  /* right inspector */
+  .side{background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:12px}
+  .cap{color:#8a99a8;letter-spacing:.12em;font-size:11px;margin:14px 0 6px}
+  .cap:first-child{margin-top:0}
+  .fld{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0}
+  .fld label{color:var(--ink2)}
+  .fld input[type=number],.fld input[type=text],.fld select{width:104px;padding:3px 6px;
+    border:1px solid var(--line);border-radius:4px;background:var(--field);text-align:right}
+  .fld input[type=text]{text-align:left}
+  .fld input[type=checkbox]{width:auto}
+  .empty{color:var(--ink2);font-style:italic}
+  .op{display:flex;gap:6px;align-items:center;margin:3px 0}
+  .op input{width:44px;padding:2px 4px;border:1px solid var(--line);border-radius:3px;background:var(--field);text-align:right}
+  .op .rm{margin-left:auto;color:var(--powder);cursor:pointer}
+  .stat{display:flex;justify-content:space-between;color:var(--ink2)}
+  .stat b{color:var(--ink)}
+  .issue{color:var(--powder);margin:5px 0;padding-left:14px;text-indent:-14px}
+  .good{color:var(--ok)}
+  .rmbtn{width:100%;margin-top:8px;padding:6px;border:1px solid #e0b9b0;background:#fbeeeb;
+    color:var(--powder);border-radius:4px;cursor:pointer}
+</style>
+
+<div class="app">
+  <div class="bar">
+    <b>SIEGE</b><span style="color:var(--ink2)">plan editor</span>
+    <input class="name" id="name" value="my castle" spellcheck="false">
+    <span class="sp"></span>
+    <button class="act" id="new">new</button>
+    <button class="act" id="open">open&hellip;</button>
+    <button class="act" id="copy">copy json</button>
+    <button class="act" id="download">download</button>
+    <button class="act go" id="toviewer">open in viewer &rarr;</button>
+    <input id="file" type="file" accept="application/json,.json" hidden>
+  </div>
+
+  <div class="rail" id="rail"></div>
+
+  <div class="stage">
+    <canvas id="c"></canvas>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <div class="side">
+    <div class="cap">PLAN DEFAULTS</div>
+    <div id="defaults"></div>
+    <div class="cap">SELECTED</div>
+    <div id="inspector"><div class="empty">nothing selected</div></div>
+    <div class="cap">CHECK</div>
+    <div id="check"></div>
+  </div>
+</div>
+
+<script type="module">
+import { buildPlan, validatePlan } from './buildplan.mjs';
+
+/* ============ the plan (this IS the exported JSON) =================== */
+const START = {
+  name: 'my castle', camera: 34,
+  defaults: { thickness: 0.9, rings: 2, courses: 24, courseH: 0.42, brickL: 0.6 },
+  elements: [
+    { type: 'tower', id: 'keep', shape: 'square', cx: 0, cz: 0, side: 5.2, crenels: true,
+      openings: [{ x: -2.6, z: 0, w: 1.8, from: 0, to: 4 }] },
+    { type: 'banner', on: 'keep' },
+  ],
+};
+let plan = structuredClone(START);
+let sel = null;                 // selected element (reference into plan.elements)
+let selPart = null;             // 'body' | {type:'vertex', i}
+let bricks = [], check = null;  // last build + validation
+
+/* ============ tools ================================================= */
+const TOOLS = {
+  select:   { key:'V', tip:'select · drag to move · Delete to remove' },
+  wall:     { key:'W', tip:'click to add corners · Enter or double-click to finish · Esc to cancel' },
+  tower:    { key:'T', tip:'click to drop a tower · edit its size on the right' },
+  gate:     { key:'G', tip:'click a wall to cut a gate or window through it' },
+  keg:      { key:'K', tip:'click to place a powder keg' },
+  magazine: { key:'M', tip:'click to place a magazine (a cluster of kegs)' },
+  banner:   { key:'B', tip:'click a tower to plant the banner on it · or click open ground' },
+};
+const ICON = {
+  select:'<path d="M4 3l7 16 2-6 6-2z" fill="#1c2530"/>',
+  wall:'<path d="M3 14h4v4H3zM8 14h4v4H8zM13 14h4v4h-4zM5 9h4v4H5zM10 9h4v4h-4zM15 9h4v4h-4z" fill="#b0a894" stroke="#7d7460" stroke-width=".4"/>',
+  tower:'<rect x="5" y="4" width="10" height="14" fill="#b0a894" stroke="#7d7460"/><path d="M5 4v-1h2v1h2v-1h2v1h2v-1h2v1" fill="#b0a894"/>',
+  gate:'<rect x="5" y="4" width="10" height="15" fill="#b0a894" stroke="#7d7460"/><path d="M8 19v-7a2 2 0 0 1 4 0v7" fill="#eef3f7" stroke="#7d7460"/>',
+  keg:'<ellipse cx="10" cy="10" rx="6" ry="7" fill="#a8482f"/><path d="M4 10h12M6 6h8M6 14h8" stroke="#6e2c1c" stroke-width=".8"/>',
+  magazine:'<circle cx="7" cy="8" r="3.2" fill="#a8482f"/><circle cx="13" cy="9" r="3.2" fill="#a8482f"/><circle cx="10" cy="13" r="3.2" fill="#a8482f"/>',
+  banner:'<path d="M6 3v15" stroke="#8a7a5c" stroke-width="1.4"/><path d="M6 4h9l-2 3 2 3H6z" fill="#b3402f"/>',
+};
+let tool = 'select';
+const rail = document.getElementById('c') && document.getElementById('rail');
+for (const [id, T] of Object.entries(TOOLS)) {
+  const b = document.createElement('button');
+  b.className = 'tool' + (id === tool ? ' on' : '');
+  b.dataset.tool = id;
+  b.title = id + ' (' + T.key + ')';
+  b.innerHTML = `<svg viewBox="0 0 20 22">${ICON[id]}</svg><span class="k">${T.key}</span>`;
+  b.onclick = () => setTool(id);
+  rail.appendChild(b);
+}
+function setTool(id) {
+  tool = id; wallDraft = null;
+  [...rail.children].forEach(c => c.classList.toggle('on', c.dataset.tool === id));
+  hint(); draw();
+}
+function hint() {
+  document.getElementById('hint').textContent =
+    TOOLS[tool].tip + '   ·   drag empty space or middle-button to pan · scroll to zoom';
+}
+
+/* ============ canvas + world<->screen =============================== */
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+let view = { ox: 0, oz: 0, scale: 14 };     // metres->pixels; origin centred by default
+let W = 0, H = 0, dpr = Math.min(2, devicePixelRatio || 1);
+function resize() {
+  const r = cv.parentElement.getBoundingClientRect();
+  W = r.width; H = r.height;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+addEventListener('resize', resize);
+const sx = x => W / 2 + (x - view.ox) * view.scale;
+const sy = z => H / 2 + (z - view.oz) * view.scale;
+const wx = px => (px - W / 2) / view.scale + view.ox;
+const wz = py => (py - H / 2) / view.scale + view.oz;
+
+let snapOn = true;
+const snap = v => snapOn ? Math.round(v / 0.5) * 0.5 : Math.round(v * 100) / 100;
+
+/* ============ recompute + validate ================================= */
+let recomputeQueued = false;
+function recompute(validateToo = true) {
+  try { bricks = buildPlan(plan); }
+  catch (e) { bricks = []; check = { ok:false, issues:['build error: ' + e.message], stats:{} }; drawCheck(); draw(); return; }
+  if (validateToo) { check = validatePlan(bricks); drawCheck(); }
+  draw();
+}
+function softRecompute() {          // during drags: rebuild footprints, skip the costly validate
+  if (recomputeQueued) return;
+  recomputeQueued = true;
+  requestAnimationFrame(() => { recomputeQueued = false; recompute(false); });
+}
+
+/* ============ drawing ============================================== */
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  drawGrid();
+  drawGun();
+
+  // real brick footprints, straight from the loader
+  for (const b of bricks) {
+    if (b.isKeg || b.isBanner) continue;
+    footprint(b, '#b0a894', '#8d846f');
+  }
+  // kegs as powder barrels
+  for (const b of bricks) if (b.isKeg) {
+    ctx.fillStyle = '#a8482f';
+    ctx.beginPath(); ctx.arc(sx(b.p[0]), sy(b.p[2]), Math.max(3, 0.34 * view.scale), 0, 7); ctx.fill();
+  }
+  // banners
+  for (const b of bricks) if (b.isBanner && b.pole) {
+    const x = sx(b.p[0]), y = sy(b.p[2]);
+    ctx.fillStyle = '#b3402f';
+    ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 10, y - 4); ctx.lineTo(x, y - 1); ctx.fill();
+    ctx.strokeStyle = '#8a7a5c'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x, y - 8); ctx.lineTo(x, y + 4); ctx.stroke();
+  }
+
+  drawHandles();
+  drawWallDraft();
+}
+
+function footprint(b, fill, stroke) {
+  const a = b.yaw, ca = Math.cos(a), sa = Math.sin(a);
+  const hx = b.h[0], hz = b.h[2];
+  // world corner = center + sxx*hx*(ca,-sa) + szz*hz*(sa,ca)
+  const pts = [[-1,-1],[1,-1],[1,1],[-1,1]].map(([u,v]) => [
+    b.p[0] + u*hx*ca + v*hz*sa,
+    b.p[2] + u*hx*(-sa) + v*hz*ca,
+  ]);
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(sx(p[0]), sy(p[1])) : ctx.moveTo(sx(p[0]), sy(p[1])));
+  ctx.closePath();
+  ctx.fillStyle = fill; ctx.fill();
+  if (view.scale > 8) { ctx.strokeStyle = stroke; ctx.lineWidth = 0.5; ctx.stroke(); }
+}
+
+function drawGrid() {
+  const step = 1;
+  const x0 = Math.floor(wx(0) / step) * step, x1 = wx(W);
+  const z0 = Math.floor(wz(0) / step) * step, z1 = wz(H);
+  ctx.lineWidth = 1;
+  for (let x = x0; x <= x1; x += step) {
+    ctx.strokeStyle = (Math.round(x) % 5 === 0) ? '#cdd8e2' : '#e0e8ef';
+    ctx.beginPath(); ctx.moveTo(sx(x), 0); ctx.lineTo(sx(x), H); ctx.stroke();
+  }
+  for (let z = z0; z <= z1; z += step) {
+    ctx.strokeStyle = (Math.round(z) % 5 === 0) ? '#cdd8e2' : '#e0e8ef';
+    ctx.beginPath(); ctx.moveTo(0, sy(z)); ctx.lineTo(W, sy(z)); ctx.stroke();
+  }
+  // origin
+  ctx.strokeStyle = '#b6c3ce'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(sx(0)-6, sy(0)); ctx.lineTo(sx(0)+6, sy(0));
+  ctx.moveTo(sx(0), sy(0)-6); ctx.lineTo(sx(0), sy(0)+6); ctx.stroke();
+}
+
+/* the gun sits to the west (-x) and everything the game does assumes it.
+   Show it so you build the weak side toward the guns, not away from them. */
+function drawGun() {
+  const gy = sy(0);
+  ctx.strokeStyle = '#9fb0bf'; ctx.setLineDash([5, 5]); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(sx(0), gy); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#30363d';
+  ctx.beginPath(); ctx.moveTo(6, gy - 6); ctx.lineTo(24, gy); ctx.lineTo(6, gy + 6); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#5b6b7c'; ctx.font = '11px ui-monospace,monospace';
+  ctx.fillText('gun (west)', 6, gy - 10);
+}
+
+function drawHandles() {
+  for (const el of plan.elements) {
+    const on = el === sel;
+    if (el.type === 'wall') {
+      const p = el.path;
+      ctx.strokeStyle = on ? '#2f6fb0' : '#7d95aa';
+      ctx.lineWidth = on ? 2 : 1; ctx.setLineDash(on ? [] : [3, 3]);
+      ctx.beginPath();
+      p.forEach((v, i) => i ? ctx.lineTo(sx(v[0]), sy(v[1])) : ctx.moveTo(sx(v[0]), sy(v[1])));
+      if (el.closed) ctx.closePath();
+      ctx.stroke(); ctx.setLineDash([]);
+      if (on) p.forEach(v => handleDot(sx(v[0]), sy(v[1]), '#2f6fb0'));
+    } else if (el.type === 'tower') {
+      const cx = sx(el.cx), cz = sy(el.cz);
+      if (on) { ctx.strokeStyle = '#2f6fb0'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cz, 5, 0, 7); ctx.stroke(); }
+    } else if (el.type === 'keg' || el.type === 'magazine' || el.type === 'banner') {
+      if (on) {
+        const x = el.x ?? bannerXZ(el)[0], z = el.z ?? bannerXZ(el)[1];
+        handleDot(sx(x), sy(z), '#2f6fb0', 7);
+      }
+    }
+    // openings as little gate marks
+    for (const o of el.openings || []) {
+      ctx.strokeStyle = '#2f6fb0'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(sx(o.x), sy(o.z), Math.max(4, o.w * 0.5 * view.scale), 0, 7); ctx.stroke();
+    }
+  }
+}
+function handleDot(x, y, c, r = 4) {
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = c; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.rect(x - r/2, y - r/2, r, r); ctx.fill(); ctx.stroke();
+}
+
+let wallDraft = null;   // array of [x,z] while drawing a wall
+function drawWallDraft() {
+  if (!wallDraft) return;
+  ctx.strokeStyle = '#2f6fb0'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  wallDraft.forEach((v, i) => i ? ctx.lineTo(sx(v[0]), sy(v[1])) : ctx.moveTo(sx(v[0]), sy(v[1])));
+  if (mouseW) ctx.lineTo(sx(mouseW[0]), sy(mouseW[1]));
+  ctx.stroke();
+  wallDraft.forEach(v => handleDot(sx(v[0]), sy(v[1]), '#2f6fb0'));
+}
+
+/* banner world position (explicit, or resolved from its tower) */
+function bannerXZ(el) {
+  if (el.on == null) return [el.x, el.z];
+  const t = plan.elements.find(e => e.id === el.on);
+  if (!t) return [el.x ?? 0, el.z ?? 0];
+  const inset = (t.thickness ?? plan.defaults.thickness ?? 0.9) / 2;
+  const half = t.shape === 'ngon' ? (t.r ?? 3) - inset : (t.side ?? 5) / 2 - inset;
+  return [t.cx + half, t.cz];
+}
+
+/* ============ picking =============================================== */
+function pick(x, z) {
+  // point elements first (easiest to grab)
+  for (const el of plan.elements) {
+    if (el.type === 'keg' || el.type === 'magazine') {
+      if (Math.hypot(el.x - x, el.z - z) < 0.7) return { el, part:'body' };
+    } else if (el.type === 'banner') {
+      const [bx, bz] = bannerXZ(el);
+      if (Math.hypot(bx - x, bz - z) < 0.8) return { el, part:'body' };
+    }
+  }
+  // wall vertices, then tower centres, then bodies
+  for (const el of plan.elements) if (el.type === 'wall') {
+    for (let i = 0; i < el.path.length; i++)
+      if (Math.hypot(el.path[i][0] - x, el.path[i][1] - z) < 0.6) return { el, part:{ type:'vertex', i } };
+  }
+  for (const el of plan.elements) if (el.type === 'tower') {
+    const half = el.shape === 'ngon' ? (el.r ?? 3) : (el.side ?? 5) / 2;
+    if (Math.abs(el.cx - x) < half && Math.abs(el.cz - z) < half) return { el, part:'body' };
+  }
+  for (const el of plan.elements) if (el.type === 'wall') {
+    for (let i = 0; i + 1 < el.path.length + (el.closed ? 1 : 0); i++) {
+      const a = el.path[i], b = el.path[(i + 1) % el.path.length];
+      if (segDist(x, z, a[0], a[1], b[0], b[1]) < (el.thickness ?? 1) / 2 + 0.3) return { el, part:'body' };
+    }
+  }
+  return null;
+}
+function segDist(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az, l2 = dx*dx + dz*dz || 1;
+  let t = ((px - ax) * dx + (pz - az) * dz) / l2; t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t*dx), pz - (az + t*dz));
+}
+function nearestWall(x, z) {   // for the gate tool
+  let best = null, bd = 1e9;
+  for (const el of plan.elements) {
+    if (el.type !== 'wall' && el.type !== 'tower') continue;
+    const path = el.type === 'wall' ? el.path
+      : (el.shape === 'ngon' ? ngonPts(el) : squarePts(el));
+    const closed = el.type === 'tower' || el.closed;
+    for (let i = 0; i + 1 < path.length + (closed ? 1 : 0); i++) {
+      const a = path[i], b = path[(i + 1) % path.length];
+      const d = segDist(x, z, a[0], a[1], b[0], b[1]);
+      if (d < bd) { bd = d; best = el; }
+    }
+  }
+  return bd < 2.5 ? best : null;
+}
+const squarePts = el => { const h = (el.side ?? 5) / 2, x = el.cx, z = el.cz;
+  return [[x-h,z-h],[x-h,z+h],[x+h,z+h],[x+h,z-h]]; };
+const ngonPts = el => { const p = []; const n = el.n ?? 8, r = el.r ?? 3;
+  for (let i=0;i<n;i++){const t=i/n*Math.PI*2; p.push([el.cx+Math.cos(t)*r, el.cz+Math.sin(t)*r]);} return p; };
+
+/* ============ pointer =============================================== */
+let mouseW = null, dragging = null, panning = null, downPt = null, movedFar = false;
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  const x = snap(wx(e.offsetX)), z = snap(wz(e.offsetY));
+  downPt = { sx:e.offsetX, sy:e.offsetY, x, z }; movedFar = false;
+
+  if (e.button === 1 || (tool === 'select' && e.shiftKey)) { panning = { ox:view.ox, oz:view.oz, sx:e.offsetX, sy:e.offsetY }; return; }
+
+  if (tool === 'select') {
+    const hit = pick(wx(e.offsetX), wz(e.offsetY));
+    if (hit) { select(hit.el, hit.part); dragging = { el:hit.el, part:hit.part, x, z }; }
+    else { select(null); panning = { ox:view.ox, oz:view.oz, sx:e.offsetX, sy:e.offsetY }; }
+    return;
+  }
+  if (tool === 'wall') {
+    if (!wallDraft) wallDraft = [];
+    wallDraft.push([x, z]);
+    draw(); return;
+  }
+});
+cv.addEventListener('pointermove', e => {
+  mouseW = [snap(wx(e.offsetX)), snap(wz(e.offsetY))];
+  if (downPt && Math.hypot(e.offsetX - downPt.sx, e.offsetY - downPt.sy) > 3) movedFar = true;
+
+  if (panning) {
+    view.ox = panning.ox - (e.offsetX - panning.sx) / view.scale;
+    view.oz = panning.oz - (e.offsetY - panning.sy) / view.scale;
+    draw(); return;
+  }
+  if (dragging) { moveBy(dragging, mouseW[0], mouseW[1]); softRecompute(); return; }
+  if (wallDraft) draw();
+});
+cv.addEventListener('pointerup', e => {
+  if (panning) { panning = null; downPt = null; return; }
+  if (dragging) { dragging = null; downPt = null; recompute(); syncInspector(); return; }
+
+  const x = snap(wx(e.offsetX)), z = snap(wz(e.offsetY));
+  if (!movedFar) placeAt(x, z, wx(e.offsetX), wz(e.offsetY));
+  downPt = null;
+});
+cv.addEventListener('dblclick', () => { if (tool === 'wall') finishWall(); });
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const mx = wx(e.offsetX), mz = wz(e.offsetY);
+  view.scale = Math.max(4, Math.min(60, view.scale * (e.deltaY < 0 ? 1.1 : 1/1.1)));
+  view.ox = mx - (e.offsetX - W/2) / view.scale;
+  view.oz = mz - (e.offsetY - H/2) / view.scale;
+  draw();
+}, { passive:false });
+
+function moveBy(d, x, z) {
+  const el = d.el, dx = x - d.x, dz = z - d.z;
+  if (el.type === 'wall') {
+    if (d.part && d.part.type === 'vertex') { el.path[d.part.i] = [x, z]; }
+    else { el.path = el.path.map(v => [v[0] + dx, v[1] + dz]); (el.openings||[]).forEach(o => { o.x += dx; o.z += dz; }); }
+  } else if (el.type === 'tower') {
+    el.cx += dx; el.cz += dz; (el.openings||[]).forEach(o => { o.x += dx; o.z += dz; });
+  } else { el.x = x; el.z = z; }
+  d.x = x; d.z = z;
+}
+
+/* place a new element for the active tool */
+function placeAt(x, z, rawx, rawz) {
+  if (tool === 'tower') {
+    const el = { type:'tower', id:uid('tower'), shape:'square', cx:x, cz:z, side:5,
+      crenels:true, openings:[] };
+    add(el); return;
+  }
+  if (tool === 'keg') { add({ type:'keg', x, z, y:0.45 }); return; }
+  if (tool === 'magazine') { add({ type:'magazine', x, z, y:0.45, n:4, spread:0.9,
+      spec:{ blastR:3.0, power:2.2, crater:1.8, impulse:30000 } }); return; }
+  if (tool === 'gate') {
+    const w = nearestWall(rawx, rawz);
+    if (!w) { flashHint('click closer to a wall to cut a gate'); return; }
+    if (!w.openings) w.openings = [];
+    w.openings.push({ x, z, w:2.4, from:0, to:4 });
+    select(w, 'body'); recompute(); return;
+  }
+  if (tool === 'banner') {
+    const t = pick(rawx, rawz);
+    if (t && t.el.type === 'tower') {
+      if (!t.el.id) t.el.id = uid('tower');
+      dropBanners();
+      add({ type:'banner', on:t.el.id });
+    } else {
+      dropBanners();
+      const y = (plan.defaults.courses ?? 24) * (plan.defaults.courseH ?? 0.42);
+      add({ type:'banner', x, z, y });
+    }
+    return;
+  }
+  if (tool === 'select') { select(null); }
+}
+function dropBanners() { plan.elements = plan.elements.filter(e => e.type !== 'banner'); }
+
+function finishWall() {
+  if (!wallDraft || wallDraft.length < 2) { wallDraft = null; draw(); return; }
+  const el = { type:'wall', path:wallDraft.slice(), closed:false, crenels:true, openings:[] };
+  wallDraft = null;
+  add(el); setTool('select');
+}
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (e.target.matches('input,select,textarea')) return;
+  if (e.key === 'Enter' && tool === 'wall') return finishWall();
+  if (e.key === 'Escape') { wallDraft = null; draw(); return; }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { removeSel(); return; }
+  for (const [id, T] of Object.entries(TOOLS)) if (T.key.toLowerCase() === k) return setTool(id);
+});
+
+let uidN = 0;
+function uid(p) { let i = 1; while (plan.elements.some(e => e.id === p + i)) i++; return p + i; }
+function add(el) { plan.elements.push(el); select(el, 'body'); recompute(); }
+function removeSel() {
+  const i = plan.elements.indexOf(sel);
+  if (i >= 0) plan.elements.splice(i, 1);
+  select(null); recompute();
+}
+
+/* ============ selection + inspector ================================ */
+function select(el, part = 'body') { sel = el; selPart = part; syncInspector(); draw(); }
+
+const insp = document.getElementById('inspector');
+function row(label, node) {
+  const d = document.createElement('div'); d.className = 'fld';
+  const l = document.createElement('label'); l.textContent = label;
+  d.append(l, node); return d;
+}
+function num(get, set, step = 0.1) {
+  const i = document.createElement('input'); i.type = 'number'; i.step = step; i.value = round(get());
+  i.oninput = () => { const v = parseFloat(i.value); if (!Number.isNaN(v)) { set(v); recompute(); } };
+  return i;
+}
+function text(get, set) {
+  const i = document.createElement('input'); i.type = 'text'; i.value = get() ?? '';
+  i.oninput = () => { set(i.value); recompute(); };
+  return i;
+}
+function bool(get, set) {
+  const i = document.createElement('input'); i.type = 'checkbox'; i.checked = !!get();
+  i.onchange = () => { set(i.checked); recompute(); };
+  return i;
+}
+function choice(opts, get, set) {
+  const s = document.createElement('select');
+  for (const o of opts) { const op = document.createElement('option'); op.value = o; op.textContent = o; s.append(op); }
+  s.value = get(); s.onchange = () => { set(s.value); syncInspector(); recompute(); };
+  return s;
+}
+const round = v => Math.round(v * 100) / 100;
+const D = k => plan.defaults[k];
+const g = (el, k, d) => el[k] ?? d;
+
+function syncInspector() {
+  insp.innerHTML = '';
+  if (!sel) { insp.innerHTML = '<div class="empty">nothing selected</div>'; return; }
+  const el = sel;
+
+  if (el.type === 'tower') {
+    insp.append(row('id', text(() => el.id, v => el.id = v || undefined)));
+    insp.append(row('shape', choice(['square','ngon'], () => el.shape || 'square', v => el.shape = v)));
+    insp.append(row('centre x', num(() => el.cx, v => el.cx = v)));
+    insp.append(row('centre z', num(() => el.cz, v => el.cz = v)));
+    if ((el.shape || 'square') === 'ngon') {
+      insp.append(row('radius', num(() => g(el,'r',3), v => el.r = v)));
+      insp.append(row('sides', num(() => g(el,'n',8), v => el.n = Math.max(3, Math.round(v)), 1)));
+    } else {
+      insp.append(row('side', num(() => g(el,'side',5), v => el.side = v)));
+    }
+    towerCommon(el);
+  } else if (el.type === 'wall') {
+    insp.append(row('closed', bool(() => el.closed, v => el.closed = v)));
+    insp.append(row('corners', span(el.path.length + ' (drag on canvas)')));
+    towerCommon(el);
+  } else if (el.type === 'keg') {
+    insp.append(row('x', num(() => el.x, v => el.x = v)));
+    insp.append(row('z', num(() => el.z, v => el.z = v)));
+    insp.append(row('y (floor)', num(() => g(el,'y',0.45), v => el.y = v)));
+    kegSpec(el);
+  } else if (el.type === 'magazine') {
+    insp.append(row('x', num(() => el.x, v => el.x = v)));
+    insp.append(row('z', num(() => el.z, v => el.z = v)));
+    insp.append(row('kegs', num(() => g(el,'n',4), v => el.n = Math.max(1, Math.round(v)), 1)));
+    insp.append(row('spread', num(() => g(el,'spread',0.9), v => el.spread = v)));
+    kegSpec(el);
+  } else if (el.type === 'banner') {
+    const towers = plan.elements.filter(e => e.type === 'tower' && e.id).map(e => e.id);
+    insp.append(row('on tower', choice(['(free)', ...towers], () => el.on ?? '(free)',
+      v => { if (v === '(free)') { el.on = undefined; el.x = el.x ?? 0; el.z = el.z ?? 0; el.y = el.y ?? 8; }
+             else { el.on = v; delete el.x; delete el.z; delete el.y; } })));
+    if (el.on == null) {
+      insp.append(row('x', num(() => g(el,'x',0), v => el.x = v)));
+      insp.append(row('z', num(() => g(el,'z',0), v => el.z = v)));
+      insp.append(row('y (top)', num(() => g(el,'y',8), v => el.y = v)));
+    }
+  }
+  insp.append(rmButton());
+}
+function towerCommon(el) {
+  insp.append(row('thickness', num(() => g(el,'thickness',D('thickness')), v => el.thickness = v)));
+  insp.append(row('rings', num(() => g(el,'rings',D('rings')), v => el.rings = Math.max(1, Math.round(v)), 1)));
+  insp.append(row('courses', num(() => g(el,'courses',D('courses')), v => el.courses = Math.max(1, Math.round(v)), 1)));
+  insp.append(row('course h', num(() => g(el,'courseH',D('courseH')), v => el.courseH = v)));
+  insp.append(row('brick len', num(() => g(el,'brickL',D('brickL')), v => el.brickL = v)));
+  insp.append(row('crenellated', bool(() => el.crenels, v => el.crenels = v)));
+  if (el.openings && el.openings.length) {
+    const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = 'OPENINGS'; insp.append(cap);
+    el.openings.forEach((o, i) => insp.append(openingRow(el, o, i)));
+  }
+}
+function openingRow(el, o, i) {
+  const d = document.createElement('div'); d.className = 'op';
+  const mk = (k, step) => { const n = document.createElement('input'); n.type='number'; n.step=step; n.value=round(o[k]);
+    n.title=k; n.oninput=()=>{const v=parseFloat(n.value); if(!Number.isNaN(v)){o[k]=v; recompute();}}; return n; };
+  d.append(lbl('w'), mk('w',0.1), lbl('c'), mk('from',1), lbl('–'), mk('to',1));
+  const rm = document.createElement('span'); rm.className='rm'; rm.textContent='✕';
+  rm.onclick = () => { el.openings.splice(i,1); syncInspector(); recompute(); };
+  d.append(rm); return d;
+}
+function kegSpec(el) {
+  el.spec = el.spec || {};
+  const cap = document.createElement('div'); cap.className='cap'; cap.textContent='CHARGE'; insp.append(cap);
+  insp.append(row('power', num(() => g(el.spec,'power',1.8), v => el.spec.power = v)));
+  insp.append(row('blast r', num(() => g(el.spec,'blastR',2.6), v => el.spec.blastR = v)));
+  insp.append(row('crater', num(() => g(el.spec,'crater',1.5), v => el.spec.crater = v)));
+  insp.append(row('heave', num(() => g(el.spec,'impulse',2200), v => el.spec.impulse = v, 100)));
+}
+const span = t => { const s = document.createElement('span'); s.textContent = t; s.style.color='#5b6b7c'; return s; };
+const lbl = t => { const s = document.createElement('span'); s.textContent = t; s.style.color='#8a99a8'; return s; };
+function rmButton() { const b = document.createElement('button'); b.className='rmbtn'; b.textContent='delete this element';
+  b.onclick = removeSel; return b; }
+
+/* plan-wide defaults */
+const defBox = document.getElementById('defaults');
+function drawDefaults() {
+  defBox.innerHTML = '';
+  const mk = (k, step) => num(() => plan.defaults[k], v => { plan.defaults[k] = v; }, step);
+  defBox.append(row('camera', num(() => plan.camera ?? 34, v => plan.camera = v, 1)));
+  defBox.append(row('thickness', mk('thickness')));
+  defBox.append(row('rings', num(() => plan.defaults.rings, v => plan.defaults.rings = Math.max(1,Math.round(v)), 1)));
+  defBox.append(row('courses', num(() => plan.defaults.courses, v => plan.defaults.courses = Math.max(1,Math.round(v)), 1)));
+  defBox.append(row('course h', mk('courseH')));
+  defBox.append(row('brick len', mk('brickL')));
+  const s = document.createElement('div'); s.className='fld';
+  const l = document.createElement('label'); l.textContent = 'snap to ½m';
+  s.append(l, bool(() => snapOn, v => snapOn = v)); defBox.append(s);
+}
+
+/* ============ validation panel ===================================== */
+function drawCheck() {
+  const box = document.getElementById('check');
+  box.innerHTML = '';
+  if (!check) return;
+  const s = check.stats || {};
+  const line = (a, b) => { const d = document.createElement('div'); d.className='stat';
+    d.innerHTML = `<span>${a}</span><b>${b}</b>`; return d; };
+  box.append(line('bricks', s.bricks ?? 0));
+  box.append(line('joints', s.joints ?? 0));
+  box.append(line('kegs', s.kegs ?? 0));
+  box.append(line('components', s.components ?? 0));
+  if (check.ok) { const d = document.createElement('div'); d.className='good'; d.textContent='✓ stands as one piece, banner bonded'; box.append(d); }
+  else for (const is of check.issues) { const d = document.createElement('div'); d.className='issue'; d.textContent='• ' + is; box.append(d); }
+}
+
+/* ============ file: new / open / save / hand-off =================== */
+document.getElementById('name').oninput = e => plan.name = e.target.value;
+document.getElementById('new').onclick = () => {
+  plan = { name:'my castle', camera:34,
+    defaults:{ thickness:0.9, rings:2, courses:24, courseH:0.42, brickL:0.6 }, elements:[] };
+  document.getElementById('name').value = plan.name;
+  select(null); drawDefaults(); recompute();
+};
+document.getElementById('download').onclick = () => {
+  const blob = new Blob([JSON.stringify(cleanPlan(), null, 2)], { type:'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = (plan.name || 'plan').replace(/\s+/g, '_') + '.json'; a.click();
+  URL.revokeObjectURL(a.href);
+};
+document.getElementById('copy').onclick = async () => {
+  try { await navigator.clipboard.writeText(JSON.stringify(cleanPlan(), null, 2)); flashHint('copied JSON to clipboard'); }
+  catch { flashHint('clipboard blocked — use download instead'); }
+};
+document.getElementById('toviewer').onclick = () => {
+  try { localStorage.setItem('siege.pendingPlan', JSON.stringify(cleanPlan())); }
+  catch (e) { flashHint('hand-off blocked: ' + e.message); return; }
+  window.open('index.html', '_blank');
+};
+const fileEl = document.getElementById('file');
+document.getElementById('open').onclick = () => fileEl.click();
+fileEl.onchange = async () => { const f = fileEl.files[0]; if (f) await loadFile(f); fileEl.value = ''; };
+cv.addEventListener('dragover', e => e.preventDefault());
+cv.addEventListener('drop', async e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) await loadFile(f); });
+async function loadFile(f) {
+  try {
+    const p = JSON.parse(await f.text());
+    if (!Array.isArray(p.elements)) throw new Error('not a plan (no elements array)');
+    plan = p; plan.defaults = plan.defaults || { thickness:0.9, rings:2, courses:24, courseH:0.42, brickL:0.6 };
+    document.getElementById('name').value = plan.name || 'castle';
+    select(null); drawDefaults(); recompute(); flashHint('loaded ' + (plan.name || f.name));
+  } catch (err) { flashHint('could not open: ' + err.message); }
+}
+/* drop editor-internal noise before writing JSON (currently nothing extra to strip) */
+function cleanPlan() { plan.name = document.getElementById('name').value || 'castle'; return plan; }
+
+let hintT = 0;
+function flashHint(t) { const h = document.getElementById('hint'); h.textContent = t; clearTimeout(hintT);
+  hintT = setTimeout(hint, 2200); }
+
+/* ============ go ==================================================== */
+drawDefaults(); hint(); resize(); recompute();
+</script>
