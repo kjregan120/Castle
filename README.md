@@ -7,6 +7,9 @@ physics via [Jolt](https://github.com/jrouwe/JoltPhysics) (through
 renderer required), with an optional browser viewer for watching sieges play
 out.
 
+<img width="1280" height="1024" alt="image" src="https://github.com/user-attachments/assets/a76f7ec2-8bcb-473e-8b1d-b920a8eb5bd1" />
+
+
 Castles, towers, and walls are procedurally laid brick-by-brick, bonded with
 mortar, and then bombarded with cannon fire. Mortar breaks under tension,
 stone gets ejected on impact, and — when enough of one side is undermined —
