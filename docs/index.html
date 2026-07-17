@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>siege</title>
 <style>
   html,body{margin:0;height:100%;background:#8fc3e8;overflow:hidden;
     font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#1c2530}
-  canvas{display:block}
+  canvas{display:block;touch-action:none}
   /* draggable bottom-centre dock; the grid toggles between castles and weapons */
   .dock{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
     background:#ffffffdd;border:1px solid #b9c7d4;border-radius:8px;padding:8px 10px 10px;
@@ -107,7 +108,7 @@
 <div id="note"></div>
 <div id="msg"><div id="msgtext"></div></div>
 <div id="drop"><div>drop a .json plan to lay siege to it</div></div>
-<div id="tip">drag orbit &middot; scroll zoom &middot; <b>click the castle to fire</b> &middot;
+<div id="tip">drag orbit &middot; scroll/pinch zoom &middot; <b>click/tap the castle to fire</b> &middot;
   <span class="k">C</span>+# castle &middot; <span class="k">W</span>+# weapon &middot;
   <span class="k">M</span> minimize &middot; <span class="k">S</span> sound &middot; <span class="k">R</span> rebuild &middot; <span class="k">L</span> load</div>
 <input id="file" type="file" accept="application/json,.json" hidden>
@@ -504,35 +505,67 @@ function sync() {
   }
 }
 
-/* ---------------- camera --------------------------------------------- */
+/* ---------------- camera + click/tap to fire -------------------------
+   One pointer-event system covers mouse, touch and pen: a single pointer
+   drags to orbit, two fingers pinch to zoom (there's no wheel on a phone),
+   and a quick tap/click that didn't drag fires at whatever it lands on. */
 const inUI = e => e.target.closest('#dock,#tip,#note,#msg,#drop');   // clicks here never fire or orbit
-let yaw = -0.35, pitch = 0.22, dist = 34, drag = false, px = 0, py = 0;
-addEventListener('mousedown', e => { if (inUI(e)) return;
-                                     drag = true; px = e.clientX; py = e.clientY; });
-addEventListener('mouseup',   () => drag = false);
-addEventListener('mousemove', e => {
-  if (!drag) return;
-  yaw   -= (e.clientX - px) * 0.005;
-  pitch  = Math.max(-0.12, Math.min(1.2, pitch + (e.clientY - py) * 0.004));
-  px = e.clientX; py = e.clientY;
-});
-addEventListener('wheel', e => { dist = Math.max(12, Math.min(95, dist + e.deltaY*0.03)); }, {passive:true});
-
-/* ---------------- click to fire --------------------------------------- */
+let yaw = -Math.PI/2, pitch = 0.22, dist = 34;                       // start behind the gun, looking down the barrel
 const ray = new THREE.Raycaster();
-let downAt = 0;
-addEventListener('pointerdown', e => { downAt = inUI(e) ? 0 : performance.now(); });
-addEventListener('pointerup', e => {
-  if (!downAt || performance.now() - downAt > 220) return;   // that was an orbit drag
-  if (inUI(e)) { downAt = 0; return; }                       // released over the menu: not a shot
-  downAt = 0;
+
+const pointers = new Map();              // active pointers: id -> {x,y}
+let dragId = null, dragMoved = false, downAt = 0, downX = 0, downY = 0;
+let pinchStart = null;                   // {d: starting finger distance, dist: starting camera dist}
+
+addEventListener('pointerdown', e => {
+  if (inUI(e)) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) {
+    dragId = e.pointerId; dragMoved = false;
+    downAt = performance.now(); downX = e.clientX; downY = e.clientY;
+  } else if (pointers.size === 2) {
+    dragId = null;                                          // second finger down: pinch, not orbit/tap
+    const [a, b] = [...pointers.values()];
+    pinchStart = { d: Math.hypot(a.x - b.x, a.y - b.y), dist };
+  }
+});
+addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (pointers.size === 2 && pinchStart) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    dist = Math.max(12, Math.min(95, pinchStart.dist * (pinchStart.d / Math.max(1, d))));
+    return;
+  }
+  if (e.pointerId !== dragId) return;
+  if (!dragMoved && Math.hypot(e.clientX - downX, e.clientY - downY) > 6) dragMoved = true;
+  yaw   -= (e.clientX - prev.x) * 0.005;
+  pitch  = Math.max(-0.12, Math.min(1.2, pitch + (e.clientY - prev.y) * 0.004));
+});
+function releasePointer(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinchStart = null;
+  if (pointers.size === 1 && dragId === null) {             // pinch ended: hand orbit to the remaining finger
+    const [[id]] = pointers;
+    dragId = id; dragMoved = true; downAt = 0;
+  }
+  if (e.pointerId !== dragId) return;
+  dragId = null;
+  if (inUI(e)) return;
+  if (dragMoved || performance.now() - downAt > 220) return; // that was a drag/pinch, not a tap
   const nd = new THREE.Vector2((e.clientX/innerWidth)*2-1, -(e.clientY/innerHeight)*2+1);
   ray.setFromCamera(nd, cam);
   const hit = ray.intersectObject(mesh, false)[0]
            || (kegMesh ? ray.intersectObject(kegMesh, false)[0] : null)
            || ray.intersectObject(ground, false)[0];
   if (hit) fire(hit.point);
-});
+}
+addEventListener('pointerup', releasePointer);
+addEventListener('pointercancel', e => { pointers.delete(e.pointerId); if (e.pointerId === dragId) dragId = null; pinchStart = null; });
+addEventListener('wheel', e => { dist = Math.max(12, Math.min(95, dist + e.deltaY*0.03)); }, {passive:true});
 /* Keys: C then 1-9 picks a castle, W then 1-9 picks a weapon. The leader also
    flips the grid to that set and lights up its slot numbers for a moment; the
    next digit chooses, anything else cancels. R rebuilds, L loads. */
