@@ -1,4 +1,7 @@
 # Castle
+
+**[Play online](https://kjregan120.github.io/Castle/) — no install required.**
+
 <img width="1280" height="924" alt="image" src="https://github.com/user-attachments/assets/55f09fc7-8238-4c53-ba31-7399ce9579ab" />
 
 Masonry destruction game: one rigid body per intact structure, simulated with
