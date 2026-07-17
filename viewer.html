@@ -400,14 +400,22 @@ function audioInit() {
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return;
   actx = new AC();
+  if (actx.state === 'suspended') actx.resume();   // iOS Safari can start suspended even inside a gesture
   master = actx.createGain(); master.gain.value = muted ? 0 : 0.85;
   master.connect(actx.destination);
   const n = actx.sampleRate * 0.8;
   noiseBuf = actx.createBuffer(1, n, actx.sampleRate);
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  // nudge the hardware audio pipeline awake now, synchronously in the gesture --
+  // iOS Safari has been known to silently drop the first real sound otherwise
+  const unlock = actx.createBufferSource();
+  unlock.buffer = actx.createBuffer(1, 1, actx.sampleRate);
+  unlock.connect(actx.destination);
+  unlock.start(0);
 }
 addEventListener('pointerdown', audioInit);
+addEventListener('touchend', audioInit);
 addEventListener('keydown', audioInit);
 
 function noiseSrc() { const s = actx.createBufferSource(); s.buffer = noiseBuf; s.loop = true; return s; }
