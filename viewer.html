@@ -42,8 +42,8 @@
   .dock.min .bar{margin-bottom:0}
   .dock.min .grid,.dock.min .seg,.dock.min #loadbtn,.dock.min #roundsWrap,.dock.min #sndbtn{display:none}
   .dock.min .minlabel{display:inline}
-  /* the 3x3 grid */
-  .grid{display:grid;grid-template-columns:repeat(3,46px);grid-auto-rows:46px;gap:5px}
+  /* the 6x3 grid */
+  .grid{display:grid;grid-template-columns:repeat(6,46px);grid-auto-rows:46px;gap:5px}
   .slot{position:relative;display:grid;place-items:center;padding:0;cursor:pointer;
     background:#eef3f8;border:1px solid #c6d2dc;border-radius:6px;color:#3a4d61;
     transition:border-color .12s,background .12s,color .12s,box-shadow .12s}
@@ -53,13 +53,8 @@
     background:#f2f5f9;color:#c2ccd6}
   .slot.locked:hover{border-color:#cfd9e2;background:#f2f5f9;color:#c2ccd6}
   .slot .ico{width:28px;height:28px;display:block;pointer-events:none}
-  .slot .num{position:absolute;top:2px;left:4px;font-size:10px;font-weight:600;
-    color:#2f6fb0;opacity:0;transition:opacity .12s;pointer-events:none}
   .slot .dot{position:absolute;bottom:3px;right:4px;width:5px;height:5px;border-radius:50%;
     background:#a8482f}
-  .grid.arming .slot:not(.locked){box-shadow:inset 0 0 0 1px #2f6fb066}
-  .grid.arming .slot:not(.locked).on{box-shadow:inset 0 0 0 1px #2f6fb0}
-  .grid.arming .slot:not(.locked) .num{opacity:1}
   /* toast for load feedback */
   #note{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(6px);
     max-width:min(80vw,520px);text-align:center;background:#ffffffee;border:1px solid #b9c7d4;
@@ -109,7 +104,6 @@
 <div id="msg"><div id="msgtext"></div></div>
 <div id="drop"><div>drop a .json plan to lay siege to it</div></div>
 <div id="tip">drag orbit &middot; scroll/pinch zoom &middot; <b>click/tap the castle to fire</b> &middot;
-  <span class="k">C</span>+# castle &middot; <span class="k">W</span>+# weapon &middot;
   <span class="k">M</span> minimize &middot; <span class="k">S</span> sound &middot; <span class="k">R</span> rebuild &middot; <span class="k">L</span> load</div>
 <input id="file" type="file" accept="application/json,.json" hidden>
 
@@ -151,7 +145,7 @@ const CRUSH = 2.2;          // overload the stone tolerates before it pulverises
 /* ---------------- the roster ----------------------------------------
    Built-in plans come from PLANS. Loaded plans (dropped, opened, or handed
    over from the editor) are kept alongside them so they appear as castle
-   buttons, answer to the number keys, and rebuild on R just like the rest. */
+   buttons and rebuild on R just like the rest. */
 const custom = {};                       // name -> plan JSON
 let active = { kind:'builtin', key:'round' };
 function roster() {
@@ -574,30 +568,10 @@ function releasePointer(e) {
 addEventListener('pointerup', releasePointer);
 addEventListener('pointercancel', e => { pointers.delete(e.pointerId); if (e.pointerId === dragId) dragId = null; pinchStart = null; });
 addEventListener('wheel', e => { dist = Math.max(12, Math.min(95, dist + e.deltaY*0.03)); }, {passive:true});
-/* Keys: C then 1-9 picks a castle, W then 1-9 picks a weapon. The leader also
-   flips the grid to that set and lights up its slot numbers for a moment; the
-   next digit chooses, anything else cancels. R rebuilds, L loads. */
-let leader = null, leaderTimer = 0;
-function arm(which) {                     // which: 'castle' | 'weapon'
-  setMode(which);
-  leader = which; clearTimeout(leaderTimer);
-  leaderTimer = setTimeout(disarm, 1400);
-  gridEl.classList.add('arming');
-}
-function disarm() {
-  leader = null; clearTimeout(leaderTimer);
-  gridEl.classList.remove('arming');
-}
+/* Keys: M minimizes, S toggles sound, R rebuilds the active castle, L loads a plan. */
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key.toLowerCase();
-  if (leader && /^[1-9]$/.test(k)) {
-    (leader === 'castle' ? selectCastleSlot : selectWeaponSlot)(+k - 1);
-    disarm(); return;
-  }
-  if (k === 'c') { arm('castle'); return; }
-  if (k === 'w') { arm('weapon'); return; }
-  disarm();
   if (k === 'm') setMinimized(!minimized);
   else if (k === 's') setMuted(!muted);
   else if (k === 'r') reload();
@@ -741,14 +715,15 @@ function note(text, kind = '') {
 }
 const toast = t => note(t);
 
-/* ---------------- the 3x3 grid (toggles castle | weapon) ------------- */
+/* ---------------- the 6x3 grid (toggles castle | weapon) ------------- */
 let dockMode = 'castle';                     // which set the single grid shows
 const loadBtn = $('loadbtn');
+const GRID_SLOTS = 18;
 
-function slotEl(cls, icon, n, extra = '') {
+function slotEl(cls, icon, extra = '') {
   const b = document.createElement('button');
   b.className = 'slot' + cls;
-  b.innerHTML = icon + `<span class="num">${n}</span>` + extra;
+  b.innerHTML = icon + extra;
   return b;
 }
 
@@ -768,34 +743,34 @@ function drawGrid() {
   gridEl.innerHTML = '';
   if (dockMode === 'castle') {
     const list = roster();                   // built-ins, then loaded plans, then locked
-    for (let s = 0; s < 9; s++) {
+    for (let s = 0; s < GRID_SLOTS; s++) {
       const e = list[s];
       if (!e) {
-        const b = slotEl(' locked', ICON.locked, s + 1);
+        const b = slotEl(' locked', ICON.locked);
         b.title = 'Empty castle slot';
         b.onclick = () => toast('No castle in that slot yet.');
         gridEl.appendChild(b); continue;
       }
       const on = (active.kind === 'builtin' && active.key === e.id) ||
                  (active.kind === 'custom'  && active.name === e.name);
-      const b = slotEl(on ? ' on' : '', castleIcon(e), s + 1,
+      const b = slotEl(on ? ' on' : '', castleIcon(e),
                        e.kind === 'custom' ? '<span class="dot"></span>' : '');
-      b.title = `${e.name}${e.blurb ? ' — ' + e.blurb : ''}  (C+${s + 1})`;
+      b.title = `${e.name}${e.blurb ? ' — ' + e.blurb : ''}`;
       b.onclick = () => selectCastleSlot(s);
       gridEl.appendChild(b);
     }
   } else {
     const ids = Object.keys(AMMO);           // built weapons, then locked slots
-    for (let s = 0; s < 9; s++) {
+    for (let s = 0; s < GRID_SLOTS; s++) {
       const id = ids[s], A = id ? AMMO[id] : null;
       if (!A) {
-        const b = slotEl(' locked', ICON.locked, s + 1);
+        const b = slotEl(' locked', ICON.locked);
         b.title = 'Weapon slot — not built yet';
         b.onclick = () => toast('That weapon isn\'t built yet.');
         gridEl.appendChild(b); continue;
       }
-      const b = slotEl(id === selected ? ' on' : '', ICON[id] || ICON.locked, s + 1);
-      b.title = `${A.name}${A.note ? ' — ' + A.note : ''}  (W+${s + 1})`;
+      const b = slotEl(id === selected ? ' on' : '', ICON[id] || ICON.locked);
+      b.title = `${A.name}${A.note ? ' — ' + A.note : ''}`;
       b.onclick = () => selectWeaponSlot(s);
       gridEl.appendChild(b);
     }
