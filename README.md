@@ -1,6 +1,7 @@
 # Castle
 
 **[Play online](https://kjregan120.github.io/Castle/) — no install required.**
+**[Plan editor](https://kjregan120.github.io/Castle/editor.html)** — design your own castle and send it to the viewer.
 
 <img width="1280" height="924" alt="image" src="https://github.com/user-attachments/assets/55f09fc7-8238-4c53-ba31-7399ce9579ab" />
 
