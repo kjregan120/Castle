@@ -200,6 +200,36 @@ custom['Tower 05'] = {
   ]
 };
 
+/* a second castle built in the plan editor, baked in the same way
+   (originally Tower_06.json) */
+custom['Tower 06'] = {
+  "name": "Tower 06", "camera": 34,
+  "_blurb": "a keep flanked by three towers — the west tower connects by a bent wall with a gate gap down the middle, the east side closes into its own bailey, and the magazine is stacked at the southeast tower.",
+  "defaults": { "thickness": 0.9, "rings": 2, "courses": 12, "courseH": 0.42, "brickL": 0.6 },
+  "elements": [
+    { "type": "tower", "id": "tower2", "shape": "square", "cx": 0, "cz": 0, "side": 5, "crenels": true,
+      "openings": [], "courses": 24 },
+    { "type": "tower", "id": "tower3", "shape": "square", "cx": 5, "cz": -10, "side": 5, "crenels": true,
+      "openings": [], "courses": 18 },
+    { "type": "tower", "id": "tower4", "shape": "square", "cx": 5, "cz": 10, "side": 5, "crenels": true,
+      "openings": [], "courses": 18 },
+    { "type": "wall", "path": [[0, -5.5], [0, -10], [2.5, -10]], "closed": false, "crenels": true, "openings": [] },
+    { "type": "wall", "path": [[0, 5.5], [0, 10], [2.5, 10]], "closed": false, "crenels": true, "openings": [] },
+    { "type": "wall", "path": [[7.5, -10], [12.5, -10], [12.5, 10], [7.5, 10]], "closed": false, "crenels": true, "openings": [] },
+    { "type": "banner", "on": "tower2" },
+    { "type": "magazine", "x": 4, "z": 10, "y": 0.45, "n": 4, "spread": 0.9,
+      "spec": { "blastR": 3, "power": 2.2, "crater": 1.8, "impulse": 30000 } },
+    { "type": "magazine", "x": 5, "z": 10, "y": 0.45, "n": 4, "spread": 0.9,
+      "spec": { "blastR": 3, "power": 2.2, "crater": 1.8, "impulse": 30000 } },
+    { "type": "magazine", "x": 6, "z": 10, "y": 0.45, "n": 4, "spread": 0.9,
+      "spec": { "blastR": 3, "power": 2.2, "crater": 1.8, "impulse": 30000 } },
+    { "type": "tower", "id": "tower1", "shape": "square", "cx": -10, "cz": 0, "side": 5, "crenels": true,
+      "openings": [] },
+    { "type": "wall", "path": [[-10, -2.5], [-10, -5], [0, -5], [0, -2.5]], "closed": false, "crenels": true, "openings": [] },
+    { "type": "wall", "path": [[-10, 2.5], [-10, 5], [0, 5], [0, 2.5]], "closed": false, "crenels": true, "openings": [] }
+  ]
+};
+
 /* ---------------- physics world ------------------------------------- */
 function makeWorld() {
   const of = new Jolt.ObjectLayerPairFilterTable(NUM_LAYERS);
@@ -737,6 +767,10 @@ const ICON = {
                   `<path d="${battlement(12.5, 16.5, 6, 20.5, 2)}"/>` +
                   `<path d="${battlement(18.5, 22.5, 8, 20.5, 2)}"/>` +
                   `<circle cx="2.5" cy="17.3" r="1.1" fill="currentColor" stroke="none"/>`),
+  'Tower 06': svg(`<path d="${battlement(1, 5, 9, 20.5, 2)}"/>` +
+                  `<path d="${battlement(7.5, 15.5, 4, 20.5, 3)}"/>` +
+                  `<path d="${battlement(17.5, 21.5, 8, 20.5, 2)}"/>` +
+                  `<circle cx="19.5" cy="17.3" r="1.1" fill="currentColor" stroke="none"/>`),
   locked: svg(`<rect x="8" y="12" width="8" height="7" rx="1.4"/>` +
               `<path d="M9.8 12 v-2 a2.2 2.2 0 0 1 4.4 0 v2"/>`),
 
