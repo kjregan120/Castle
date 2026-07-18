@@ -319,7 +319,7 @@ function teardown() {
   if (kegMesh) { scene.remove(kegMesh); kegMesh.dispose(); kegMesh = null; }
   for (const s of shots) scene.remove(s.mesh);
   shots.length = 0;
-  for (const p of puffs) scene.remove(p.m);
+  for (const p of puffs) disposePuff(p);
   puffs.length = 0;
   Jolt.destroy(jolt);
 }
@@ -476,7 +476,14 @@ function fire(target) {
   updateHud();
 }
 
-/* ---------------- puffs and fireballs -------------------------------- */
+/* ---------------- puffs and fireballs --------------------------------
+   Each puff owns its own geometry + material (radius and color vary per
+   call), so unlike the shared shot mesh they must be explicitly disposed
+   when removed -- scene.remove() alone drops them from the scene graph but
+   leaves their GPU buffers allocated. A siege with a lot of firing and
+   keg chains (3 puffs per fireball) creates a LOT of these; without
+   disposal it's an unbounded WebGL resource leak for the length of the
+   session, which auto-advancing rounds only made longer. */
 const puffs = [];
 function puff(x, y, z, r, color = 0xffb46b, life = 0.45, grow = 4) {
   const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8),
@@ -484,6 +491,11 @@ function puff(x, y, z, r, color = 0xffb46b, life = 0.45, grow = 4) {
   m.position.set(x, y, z);
   scene.add(m);
   puffs.push({ m, t:0, life, grow });
+}
+function disposePuff(p) {
+  scene.remove(p.m);
+  p.m.geometry.dispose();
+  p.m.material.dispose();
 }
 
 /* a keg going up is not a puff: fireball, smoke and a flash of light. */
@@ -973,7 +985,7 @@ function frame() {
     p.t += dt;
     p.m.scale.setScalar(1 + p.t * p.grow);
     p.m.material.opacity = Math.max(0, 0.55 * (1 - p.t / p.life));
-    if (p.t > p.life) { scene.remove(p.m); puffs.splice(i,1); }
+    if (p.t > p.life) { disposePuff(p); puffs.splice(i,1); }
   }
   if (flashT > 0) { flashT -= dt; flash.intensity = Math.max(0, flashT * 900); }
 

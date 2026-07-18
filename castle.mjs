@@ -178,6 +178,11 @@ export class Castle {
     this.fused = new Set();         // lit once, ever
     this.booms = [];                // detonations this frame, for the renderer
     this.kegsBlown = 0;
+
+    // applyImpacts() and applyHits() share ONE settle+rebuild+blast pass
+    // (see the comments on those methods) instead of each paying for its own.
+    this._pendingSettle = false;
+    this._pendingBlasts = [];
   }
 
   kegsLeft() {
@@ -452,6 +457,10 @@ export class Castle {
     }
   }
 
+  /* queue a blast for the shared pass in applyHits() -- bodies don't exist
+     yet to shove until AFTER that pass's rebuild(), so it can't happen here */
+  _queueBlast(x, y, z, r, impulse) { this._pendingBlasts.push({ x, y, z, r, impulse }); }
+
   /* ---------- IMPACT: masonry shatters when it lands --------------------
      Without this a toppling tower falls as one rigid banana. A contact
      listener watches for hard impacts and cracks mortar around them.
@@ -546,14 +555,18 @@ export class Castle {
     return body;
   }
 
-  /* resolve any rounds that landed this frame. Returns the hits for the
-     caller to draw (muzzle flash, debris, whatever). */
+  /* resolve any rounds that landed this frame, and -- see applyImpacts()
+     below -- run the ONE shared settle+rebuild+blast pass for whatever
+     either method queued this step. Every caller in this codebase calls
+     applyImpacts() immediately before this, every step; that ordering is
+     what lets the two share a single pass instead of each paying for its
+     own full settle+rebuild when both fire in the same step.
+     Returns the hits for the caller to draw (muzzle flash, debris, whatever). */
   applyHits() {
     this._poseDirty();
-    if (!this.hits || !this.hits.length) return [];
-    const out = this.hits.slice();
-    this.hits.length = 0;
-    let dirty = false;
+    const out = (this.hits && this.hits.length) ? this.hits.slice() : [];
+    if (this.hits) this.hits.length = 0;
+    let dirty = this._pendingSettle;
 
     for (const h of out) {
       const A = h.ammo;
@@ -571,17 +584,28 @@ export class Castle {
     const booms = this.resolveKegs();          // the powder, and its chain
     if (booms.length) dirty = true;
     this.booms = (this.booms || []).concat(booms);
+    for (const b of booms) this._queueBlast(b.at[0], b.at[1], b.at[2], b.r * 1.5, b.impulse);
+    for (const h of out) this._queueBlast(h.at[0], h.at[1], h.at[2], h.ammo.blastR * 1.3, h.ammo.impulse);
 
+    this._pendingSettle = false;
     if (dirty) {
       this.settleStructure();          // crush the overloaded, shed the hanging
       this.rebuild(true);
-      for (const h of out) this.blast(h.at[0], h.at[1], h.at[2], h.ammo.blastR * 1.3, h.ammo.impulse);
-      for (const b of booms) this.blast(b.at[0], b.at[1], b.at[2], b.r * 1.5, b.impulse);
+      const blasts = this._pendingBlasts; this._pendingBlasts = [];
+      for (const b of blasts) this.blast(b.x, b.y, b.z, b.r, b.impulse);
+    } else {
+      this._pendingBlasts.length = 0;  // nothing settled -- nothing to shove
     }
     return out;
   }
 
-  /* call once per frame, AFTER Step */
+  /* call once per physics step, AFTER Step, and BEFORE applyHits() -- see
+     that method's comment. This method only cracks mortar and resolves
+     kegs; it deliberately does NOT settle or rebuild, so a step where a
+     shot both breaks mortar directly (applyHits) and lands hard enough to
+     fracture on impact (this method) still only pays for ONE settle+rebuild,
+     not two. A castle-sized collapse used to run both, back to back, every
+     single step that had both kinds of damage queued. */
   applyImpacts() {
     this._poseDirty();
     if (!this.impacts || !this.impacts.length) return 0;
@@ -607,12 +631,9 @@ export class Castle {
     // after the shot that buried it.
     const booms = this.resolveKegs();
     this.booms = (this.booms || []).concat(booms);
+    for (const b of booms) this._queueBlast(b.at[0], b.at[1], b.at[2], b.r * 1.5, b.impulse);
 
-    if (broke > 0 || booms.length) {
-      broke += this.settleStructure();
-      this.rebuild(true);
-      for (const b of booms) this.blast(b.at[0], b.at[1], b.at[2], b.r * 1.5, b.impulse);
-    }
+    if (broke > 0 || booms.length) this._pendingSettle = true;
     return broke;
   }
 
