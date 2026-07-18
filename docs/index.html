@@ -65,7 +65,9 @@
   #note.warn{color:#a8482f;border-color:#e0b6ab}
   #note.ok{color:#3c7a3c;border-color:#b6d3b6}
   #msg{position:fixed;inset:0;display:none;place-items:center;pointer-events:none}
-  #msg div{font-size:34px;letter-spacing:.22em;color:#fff;text-shadow:0 2px 24px #000a}
+  #msg div{font-size:34px;letter-spacing:.22em;color:#fff;text-shadow:0 2px 24px #000a;
+    max-width:92vw;text-align:center;line-height:1.3}
+  #msg .sub{display:block;font-size:15px;letter-spacing:.08em;margin-top:10px}
   #tip{position:fixed;top:14px;left:14px;color:#22303c;text-shadow:0 1px 0 #fff6;
     font-size:12px;max-width:calc(100vw - 28px);z-index:3}
   #tip b{color:#0f1721}
@@ -306,7 +308,8 @@ const kegMat   = new THREE.MeshStandardMaterial({ color:0x6b3f22, roughness:0.75
 const dummy = new THREE.Object3D();
 
 let jolt, castle, bricks, links, mesh, kegMesh, kegIdx = [], xf;
-let won = false, settle = 0;
+let won = false, lost = false, settle = 0;
+let roundToken = 0, advanceTimer = null;   // guards the auto-advance timeout against a manual reload in between
 const shots = [];
 
 /* tear the current world and its meshes down */
@@ -360,7 +363,9 @@ function instantiate(bricksIn, cameraDist) {
 
   xf = new Float32Array(bricks.length * 7);
   rounds = 20;
-  won = false; settle = 0;
+  won = false; lost = false; settle = 0;
+  roundToken++;
+  if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
   dist = cameraDist;
   hideMsg();
   sync();
@@ -394,6 +399,42 @@ function loadPlan(plan, { register = true } = {}) {
 function reload() {
   if (active.kind === 'builtin') build(active.key);
   else loadPlan(custom[active.name], { register:false });
+}
+
+/* find `active` in roster() -- same identity test drawGrid() uses to light up a slot */
+function currentRosterIndex(list) {
+  return list.findIndex(e =>
+    (active.kind === 'builtin' && e.kind === 'builtin' && e.id === active.key) ||
+    (active.kind === 'custom'  && e.kind === 'custom'  && e.name === active.name));
+}
+
+/* start the next castle in the roster; loop back to the top once the series is cleared */
+function advanceToNextCastle() {
+  const list = roster();
+  const i = currentRosterIndex(list);
+  const next = list[(i < 0 ? -1 : i) + 1] || list[0];
+  next.kind === 'builtin' ? build(next.id) : loadPlan(custom[next.name], { register:false });
+  setMode('castle');
+  return next;
+}
+
+/* a round just ended: won -> the next castle in the series, lost -> the same one again.
+   Pauses on the result message first so the outcome reads before the castle changes. */
+function onRoundEnd(didWin) {
+  const token = roundToken;
+  if (didWin) {
+    const list = roster();
+    const i = currentRosterIndex(list);
+    const next = list[(i < 0 ? -1 : i) + 1];
+    showMsg('BANNER DOWN', next ? `next: ${next.name}` : 'series complete — starting over');
+  } else {
+    showMsg('OUT OF ROUNDS', 'retrying this castle');
+  }
+  advanceTimer = setTimeout(() => {
+    advanceTimer = null;
+    if (token !== roundToken) return;      // player already moved on manually -- don't also jump
+    didWin ? advanceToNextCastle() : reload();
+  }, 2200);
 }
 
 /* ---------------- projectiles ---------------------------------------- */
@@ -878,7 +919,17 @@ function updateHud() {
   $('rounds').textContent = rounds;
   $('roundsWrap').classList.toggle('low', rounds <= 3);
 }
-function showMsg(t) { $('msgtext').textContent = t; $('msg').style.display = 'grid'; }
+function showMsg(t, sub) {
+  const el = $('msgtext');
+  el.textContent = t;
+  if (sub) {
+    const s = document.createElement('span');
+    s.className = 'sub';
+    s.textContent = sub;
+    el.appendChild(s);
+  }
+  $('msg').style.display = 'grid';
+}
 function hideMsg()  { $('msg').style.display = 'none'; }
 
 /* ---------------- loop ------------------------------------------------ */
@@ -929,11 +980,11 @@ function frame() {
   sync();
   updateHud();
 
-  if (!won && castle.bannerDown()) {
+  if (!won && !lost && castle.bannerDown()) {
     settle += dt;
-    if (settle > 0.8) { won = true; showMsg('BANNER DOWN'); }
-  } else if (!won && rounds === 0 && shots.length === 0 && castle.awake() === 0) {
-    showMsg('OUT OF ROUNDS');
+    if (settle > 0.8) { won = true; onRoundEnd(true); }
+  } else if (!won && !lost && rounds === 0 && shots.length === 0 && castle.awake() === 0) {
+    lost = true; onRoundEnd(false);
   }
 
   const cy = Math.cos(pitch);
