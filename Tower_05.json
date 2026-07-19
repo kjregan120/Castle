@@ -25,7 +25,8 @@
           "from": 0,
           "to": 4
         }
-      ]
+      ],
+      "rings": 1
     },
     {
       "type": "tower",
@@ -36,7 +37,8 @@
       "side": 5,
       "crenels": true,
       "openings": [],
-      "courses": 18
+      "courses": 18,
+      "rings": 1
     },
     {
       "type": "tower",
@@ -47,7 +49,8 @@
       "side": 5,
       "crenels": true,
       "openings": [],
-      "courses": 18
+      "courses": 18,
+      "rings": 1
     },
     {
       "type": "tower",
@@ -57,7 +60,8 @@
       "cz": -15,
       "side": 5,
       "crenels": true,
-      "openings": []
+      "openings": [],
+      "rings": 1
     },
     {
       "type": "tower",
@@ -67,7 +71,8 @@
       "cz": 15,
       "side": 5,
       "crenels": true,
-      "openings": []
+      "openings": [],
+      "rings": 1
     },
     {
       "type": "wall",
@@ -88,7 +93,8 @@
       "closed": false,
       "crenels": true,
       "openings": [],
-      "courses": 12
+      "courses": 12,
+      "rings": 1
     },
     {
       "type": "wall",
@@ -105,7 +111,8 @@
       "closed": false,
       "crenels": true,
       "openings": [],
-      "courses": 18
+      "courses": 18,
+      "rings": 1
     },
     {
       "type": "wall",
@@ -126,7 +133,8 @@
       "closed": false,
       "crenels": true,
       "openings": [],
-      "courses": 12
+      "courses": 12,
+      "rings": 1
     },
     {
       "type": "wall",
@@ -147,7 +155,8 @@
       "closed": false,
       "crenels": true,
       "openings": [],
-      "courses": 12
+      "courses": 12,
+      "rings": 1
     },
     {
       "type": "wall",
@@ -168,7 +177,8 @@
       "closed": false,
       "crenels": true,
       "openings": [],
-      "courses": 12
+      "courses": 12,
+      "rings": 1
     },
     {
       "type": "banner",
