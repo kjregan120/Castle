@@ -29,6 +29,7 @@
     background:#eef3f8;border:1px solid #c6d2dc;border-radius:4px}
   .mini:hover{border-color:#2f6fb0;background:#e2edf8}
   .mini.hide{display:none}
+  .mini.on{background:#cfe4f7;border-color:#2f6fb0;color:#0f1721;box-shadow:inset 0 0 0 1px #2f6fb0}
   .iconbtn{font:inherit;font-size:15px;line-height:1;width:20px;height:20px;flex:none;
     display:grid;place-items:center;cursor:pointer;color:#5b6b7c;
     background:#eef3f8;border:1px solid #c6d2dc;border-radius:4px}
@@ -89,6 +90,7 @@
     </div>
     <span class="spacer"></span>
     <button class="mini" id="loadbtn" title="Load a .json plan (L)">load&hellip;</button>
+    <button class="mini hide" id="freeaimbtn" title="Fire from wherever the camera is looking, instead of the fixed cannon">free aim</button>
     <span class="rounds" id="roundsWrap"><b id="rounds">20</b> shots</span>
     <button class="iconbtn" id="sndbtn" title="Sound on (S)" aria-label="Toggle sound">
       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -466,20 +468,34 @@ function ballistic(from, to, speed, high) {
   return [hx*Math.cos(ang), Math.sin(ang), hz*Math.cos(ang)];
 }
 
+const _camDir = new THREE.Vector3();   // scratch, reused by fire()'s free-aim origin
+
 function fire(target) {
   if (rounds <= 0 || won) return;
   const A = AMMO[selected];
-  const dir = ballistic(MUZZLE, target, A.speed, A.arc === 'high');
-  const body = castle.fire([MUZZLE.x, MUZZLE.y, MUZZLE.z], dir, A);
+  // free aim: shoot from wherever the camera is looking, not the fixed
+  // cannon -- a small offset in front of the camera so the shot doesn't
+  // spawn behind the near clip plane.
+  let from = MUZZLE;
+  if (freeAim) {
+    cam.getWorldDirection(_camDir);
+    from = cam.position.clone().addScaledVector(_camDir, 1.5);
+  }
+  const dir = ballistic(from, target, A.speed, A.arc === 'high');
+  const body = castle.fire([from.x, from.y, from.z], dir, A);
   const m = new THREE.Mesh(ballGeo, ballMat);
   m.scale.setScalar(A.calibre);
   m.castShadow = true;
   scene.add(m);
   shots.push({ body, mesh:m });
   rounds--;
-  gun.lookAt(target.x, MUZZLE.y, target.z);
-  gun.rotateY(Math.PI/2);
-  puff(MUZZLE.x, MUZZLE.y, MUZZLE.z, 0.45, 0xdfe6ec, 0.4, 3);
+  if (freeAim) {
+    puff(from.x, from.y, from.z, 0.35, 0xdfe6ec, 0.35, 3);
+  } else {
+    gun.lookAt(target.x, MUZZLE.y, target.z);
+    gun.rotateY(Math.PI/2);
+    puff(MUZZLE.x, MUZZLE.y, MUZZLE.z, 0.45, 0xdfe6ec, 0.4, 3);
+  }
   sfxCannon();
   updateHud();
   if (dockMode === 'weapon') drawGrid();   // keeps the nuke slot's lock state current as rounds drop
@@ -940,6 +956,16 @@ let dockMode = 'castle';                     // which set the single grid shows
 const loadBtn = $('loadbtn');
 const GRID_SLOTS = 18;
 
+/* free aim: fire from wherever the camera currently is instead of the
+   fixed cannon -- lets you orbit around and shoot from any angle. */
+let freeAim = false;
+const freeaimBtn = $('freeaimbtn');
+freeaimBtn.onclick = () => {
+  freeAim = !freeAim;
+  freeaimBtn.classList.toggle('on', freeAim);
+  gun.visible = !freeAim;   // no single fixed muzzle to show once you can fire from anywhere
+};
+
 function slotEl(cls, icon, extra = '') {
   const b = document.createElement('button');
   b.className = 'slot' + cls;
@@ -953,6 +979,7 @@ function setMode(m) {
   dockMode = m;
   [...seg.children].forEach(btn => btn.classList.toggle('on', btn.dataset.mode === m));
   loadBtn.classList.toggle('hide', m !== 'castle');   // loading a plan is a castle action
+  freeaimBtn.classList.toggle('hide', m !== 'weapon'); // free aim is a weapon-console control
   drawGrid();
 }
 seg.addEventListener('click', e => {
