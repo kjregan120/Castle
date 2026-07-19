@@ -140,8 +140,11 @@ const AMMO = {
   mortar: { name:'mortar', note:'lobs OVER a curtain wall and comes down steep. slow.', key:'a',
             calibre:0.34, mass:170, speed:26,  crater:0.75, blastR:1.55, power:2.3, impulse:900,
             arc:'high' },
+  nuke:   { name:'tactical nuke', note:'one per round, costs 10 rounds. aim from above, then drop it.',
+            calibre:0.5, mass:700, speed:40, crater:3.0, blastR:5.5, power:24, impulse:45000,
+            cost:10 },
 };
-let selected = 'shell', rounds = 20;
+let selected = 'shell', rounds = 20, nukeUsed = false;
 const CRUSH = 2.2;          // overload the stone tolerates before it pulverises
 
 /* ---------------- the roster ----------------------------------------
@@ -370,6 +373,8 @@ function instantiate(bricksIn, cameraDist) {
   roundToken++;
   if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
   dist = cameraDist;
+  nukeUsed = false;
+  if (nukeAiming) exitNukeAim();
   hideMsg();
   sync();
   updateHud();
@@ -477,6 +482,29 @@ function fire(target) {
   puff(MUZZLE.x, MUZZLE.y, MUZZLE.z, 0.45, 0xdfe6ec, 0.4, 3);
   sfxCannon();
   updateHud();
+  if (dockMode === 'weapon') drawGrid();   // keeps the nuke slot's lock state current as rounds drop
+}
+
+/* the nuke doesn't come from the cannon -- it drops straight down onto the
+   target from high above. Reuses the exact same projectile/hit/damage
+   pipeline as every other round (castle.fire() takes an arbitrary launch
+   point and direction already); only the launch itself differs. */
+function fireNuke(target) {
+  if (won || lost || rounds < AMMO.nuke.cost) return;
+  const A = AMMO.nuke;
+  rounds -= A.cost;
+  nukeUsed = true;
+  const spawnY = target.y + Math.max(dist * 1.2, 40);
+  const body = castle.fire([target.x, spawnY, target.z], [0, -1, 0], A);
+  const m = new THREE.Mesh(ballGeo, ballMat);
+  m.scale.setScalar(A.calibre);
+  m.castShadow = true;
+  scene.add(m);
+  shots.push({ body, mesh:m });
+  puff(target.x, spawnY, target.z, 0.7, 0xff5a3c, 0.5, 3);   // release flash, high above
+  sfxCannon();
+  updateHud();
+  if (dockMode === 'weapon') drawGrid();   // refresh the lock state on the nuke slot
 }
 
 /* ---------------- puffs and fireballs --------------------------------
@@ -646,6 +674,49 @@ const inUI = e => e.target.closest('#dock,#tip,#note,#msg,#drop');   // clicks h
 let yaw = -Math.PI/2, pitch = 0.22, dist = 34;                       // start behind the gun, looking down the barrel
 const ray = new THREE.Raycaster();
 
+/* ---------------- tactical nuke: top-down targeting -------------------
+   Selecting it snaps the camera to a locked overhead view (see frame()
+   below) and swaps click-to-fire for click-to-confirm-then-drop; the
+   cannon itself never fires -- see fireNuke() above. */
+let nukeAiming = false, nukeTarget = null, prevSelected = 'shell';
+const reticle = new THREE.Mesh(
+  new THREE.RingGeometry(AMMO.nuke.blastR - 0.3, AMMO.nuke.blastR, 48),   // sized to the ACTUAL blast radius
+  new THREE.MeshBasicMaterial({ color:0xff2b2b, transparent:true, opacity:0.85, side:THREE.DoubleSide, depthTest:false }));
+reticle.rotation.x = -Math.PI/2;      // lie flat on the ground
+reticle.renderOrder = 999;            // always draw on top -- depthTest is off so it'd otherwise fight the terrain
+reticle.visible = false;
+scene.add(reticle);
+
+function updateNukeReticle(clientX, clientY) {
+  const nd = new THREE.Vector2((clientX/innerWidth)*2-1, -(clientY/innerHeight)*2+1);
+  ray.setFromCamera(nd, cam);
+  const hit = ray.intersectObject(mesh, false)[0]
+           || (kegMesh ? ray.intersectObject(kegMesh, false)[0] : null)
+           || ray.intersectObject(ground, false)[0];
+  if (!hit) { reticle.visible = false; nukeTarget = null; return; }
+  reticle.visible = true;
+  reticle.position.set(hit.point.x, hit.point.y + 0.05, hit.point.z);
+  nukeTarget = hit.point;
+}
+function confirmNukeTarget(clientX, clientY) {
+  updateNukeReticle(clientX, clientY);       // a quick tap may never have fired pointermove -- raycast fresh
+  if (nukeTarget) { fireNuke(nukeTarget); exitNukeAim(); }
+}
+function enterNukeAim() {
+  prevSelected = selected;
+  nukeAiming = true;
+  selected = 'nuke';
+  drawGrid();
+  toast('aim the nuke — tap to drop, tap its slot again to cancel');
+}
+function exitNukeAim() {
+  nukeAiming = false;
+  selected = prevSelected;
+  reticle.visible = false;
+  nukeTarget = null;
+  drawGrid();
+}
+
 const pointers = new Map();              // active pointers: id -> {x,y}
 let dragId = null, dragMoved = false, downAt = 0, downX = 0, downY = 0;
 let pinchStart = null;                   // {d: starting finger distance, dist: starting camera dist}
@@ -673,6 +744,7 @@ addEventListener('pointermove', e => {
     dist = Math.max(12, Math.min(95, pinchStart.dist * (pinchStart.d / Math.max(1, d))));
     return;
   }
+  if (nukeAiming) { updateNukeReticle(e.clientX, e.clientY); return; }   // no orbit while aiming -- drag the reticle instead
   if (e.pointerId !== dragId) return;
   if (!dragMoved && Math.hypot(e.clientX - downX, e.clientY - downY) > 6) dragMoved = true;
   yaw   -= (e.clientX - prev.x) * 0.005;
@@ -684,6 +756,11 @@ function releasePointer(e) {
   if (pointers.size === 1 && dragId === null) {             // pinch ended: hand orbit to the remaining finger
     const [[id]] = pointers;
     dragId = id; dragMoved = true; downAt = 0;
+  }
+  if (nukeAiming) {
+    dragId = null;
+    if (!inUI(e)) confirmNukeTarget(e.clientX, e.clientY);
+    return;
   }
   if (e.pointerId !== dragId) return;
   dragId = null;
@@ -840,6 +917,9 @@ const ICON = {
               `<circle cx="7.5" cy="19" r="0.9" fill="currentColor" stroke="none"/>` +
               `<path d="M5.6 20 H10.2"/>` +
               `<path d="M13.4 9.6 Q18 6.6 20 11" stroke-dasharray="1.6 2"/>`),
+  nuke: svg(`<circle cx="12" cy="14" r="5.6"/>` +
+            `<path d="M12 8.4 V4.8"/><path d="M9.6 5.6 L12 3.4 L14.4 5.6"/>` +
+            `<path d="M7.2 18.5 L4.4 21.2 M16.8 18.5 L19.6 21.2"/>`),
 };
 const castleIcon = e => ICON[e.id] || ICON.custom;
 
@@ -869,6 +949,7 @@ function slotEl(cls, icon, extra = '') {
 
 /* flip the grid between castles and weapons */
 function setMode(m) {
+  if (nukeAiming && m !== 'weapon') exitNukeAim();   // navigating away from weapons cancels an armed nuke
   dockMode = m;
   [...seg.children].forEach(btn => btn.classList.toggle('on', btn.dataset.mode === m));
   loadBtn.classList.toggle('hide', m !== 'castle');   // loading a plan is a castle action
@@ -909,8 +990,9 @@ function drawGrid() {
         b.onclick = () => toast('That weapon isn\'t built yet.');
         gridEl.appendChild(b); continue;
       }
-      const b = slotEl(id === selected ? ' on' : '', ICON[id] || ICON.locked);
-      b.title = `${A.name}${A.note ? ' — ' + A.note : ''}`;
+      const spent = id === 'nuke' && (nukeUsed || rounds < A.cost);
+      const b = slotEl((id === selected ? ' on' : '') + (spent ? ' locked' : ''), ICON[id] || ICON.locked);
+      b.title = spent ? `${A.name} — spent this round` : `${A.name}${A.note ? ' — ' + A.note : ''}`;
       b.onclick = () => selectWeaponSlot(s);
       gridEl.appendChild(b);
     }
@@ -926,9 +1008,16 @@ function selectCastleSlot(s) {
 function selectWeaponSlot(s) {
   const id = Object.keys(AMMO)[s];
   if (!id) { toast('That weapon slot is empty.'); return; }
+  if (id === 'nuke') {
+    if (nukeAiming) { exitNukeAim(); return; }                      // tap again to cancel
+    if (nukeUsed) { toast('The nuke is already spent this round.'); return; }
+    if (rounds < AMMO.nuke.cost) { toast(`Not enough rounds -- the nuke costs ${AMMO.nuke.cost}.`); return; }
+    enterNukeAim();
+    return;
+  }
   pick(id);
 }
-function pick(id) { selected = id; setMode('weapon'); }
+function pick(id) { if (nukeAiming) exitNukeAim(); selected = id; setMode('weapon'); }
 
 function updateHud() {
   $('rounds').textContent = rounds;
@@ -1024,9 +1113,19 @@ function frame() {
     lost = true; onRoundEnd(false);
   }
 
-  const cy = Math.cos(pitch);
-  cam.position.set(Math.sin(yaw)*cy*dist, Math.sin(pitch)*dist + 7, Math.cos(yaw)*cy*dist);
-  cam.lookAt(0, 6, 0);
+  if (nukeAiming) {
+    // looking straight down is a degenerate case for lookAt's default
+    // up=(0,1,0) (parallel to the view direction) -- swap to a horizontal
+    // up so "up" on screen maps to a stable world direction instead.
+    cam.up.set(0, 0, -1);
+    cam.position.set(0, Math.max(dist * 1.4, 45), 0.001);
+    cam.lookAt(0, 0, 0);
+  } else {
+    cam.up.set(0, 1, 0);
+    const cy = Math.cos(pitch);
+    cam.position.set(Math.sin(yaw)*cy*dist, Math.sin(pitch)*dist + 7, Math.cos(yaw)*cy*dist);
+    cam.lookAt(0, 6, 0);
+  }
   renderer.render(scene, cam);
 }
 frame();
