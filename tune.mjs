@@ -48,7 +48,7 @@ for (const S of [
     shells++;
     const aim=[Math.cos(a)*SPEC.outerR*0.95, 0.9, Math.sin(a)*SPEC.outerR*0.95];
     c.fire(MUZZLE, ballistic(MUZZLE,aim,SH.speed), SH);
-    for(let f=0;f<700;f++){ j.Step(DT,1); c.applyImpacts(); c.applyHits(); if(f>40 && c.awake()===0) break; }
+    for(let f=0;f<700;f++){ j.Step(DT,1); c.applyImpacts(); c.applyHits(); c.commitDamage(); if(f>40 && c.awake()===0) break; }
     won = c.bannerDown();
   }
   const v = !won ? 'never falls'

@@ -71,7 +71,7 @@ for (const [key, plan] of Object.entries(PLANS)) {
     let worst=0;
     for (let f=0; f<540; f++) {
       const t=performance.now();
-      j.Step(DT,1); c.applyImpacts(); c.applyHits();
+      j.Step(DT,1); c.applyImpacts(); c.applyHits(); c.commitDamage();
       worst=Math.max(worst, performance.now()-t);
       if (f>120 && c.awake()===0) break;              // everything has settled
     }

@@ -81,6 +81,7 @@ for (let shot = 1; shot <= PLAN.length && !won; shot++) {
     const t0 = process.hrtime.bigint();
     j.Step(DT, 1);
     impactBreaks += c.applyImpacts();          // masonry shatters where it lands
+    c.commitDamage();                          // applyImpacts() only queues -- this applies it
     const ms = Number(process.hrtime.bigint() - t0) / 1e6;
     if (ms > worstFrame) worstFrame = ms;
     if (c.bodies.length > peak) peak = c.bodies.length;

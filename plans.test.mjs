@@ -80,7 +80,7 @@ for (const [key, plan] of Object.entries(PLANS)) {
   let worst = 0;
   for (let f = 0; f < 900; f++) {
     const a = performance.now();
-    j.Step(DT,1); c.applyImpacts(); c.applyHits();
+    j.Step(DT,1); c.applyImpacts(); c.applyHits(); c.commitDamage();
     worst = Math.max(worst, performance.now()-a);
   }
   const h2 = c.bannerHeight();

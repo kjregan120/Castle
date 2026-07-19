@@ -992,6 +992,10 @@ function frame() {
     for (const b of castle.drainBooms()) { fireball(b.at[0], b.at[1], b.at[2], b.r); sfxKeg(b.r); }
     acc -= DT;
   }
+  // ONE settle+rebuild+blast for whatever all the substeps above queued,
+  // instead of paying full price up to 3x in a frame that's catching up --
+  // exactly the moment a magazine chain makes that catch-up happen.
+  castle.commitDamage();
   if (acc > DT) acc = DT;
 
   for (const s of shots) {

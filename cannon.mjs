@@ -50,6 +50,7 @@ for(let shot=1; shot<=6 && !won; shot++){
     j.Step(DT,1);
     c.applyImpacts();
     const hits=c.applyHits();
+    c.commitDamage();
     if(hits.length && !hitAt){ hitAt=hits[0].at; flight=f*DT; }
     if(hitAt && c.awake()===0) break;
   }

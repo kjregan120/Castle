@@ -179,8 +179,9 @@ export class Castle {
     this.booms = [];                // detonations this frame, for the renderer
     this.kegsBlown = 0;
 
-    // applyImpacts() and applyHits() share ONE settle+rebuild+blast pass
-    // (see the comments on those methods) instead of each paying for its own.
+    // applyImpacts()/applyHits() only queue damage; commitDamage() (see its
+    // comment) applies it all in ONE settle+rebuild+blast pass, however many
+    // times those two were called and however many Steps that spans.
     this._pendingSettle = false;
     this._pendingBlasts = [];
   }
@@ -555,18 +556,16 @@ export class Castle {
     return body;
   }
 
-  /* resolve any rounds that landed this frame, and -- see applyImpacts()
-     below -- run the ONE shared settle+rebuild+blast pass for whatever
-     either method queued this step. Every caller in this codebase calls
-     applyImpacts() immediately before this, every step; that ordering is
-     what lets the two share a single pass instead of each paying for its
-     own full settle+rebuild when both fire in the same step.
-     Returns the hits for the caller to draw (muzzle flash, debris, whatever). */
+  /* resolve any rounds that landed this frame. Queues damage and blasts
+     exactly like applyImpacts() below -- neither method settles or rebuilds
+     itself. Call commitDamage() when you want whatever either of them
+     queued to actually apply; see its comment for why that's a separate
+     step. Returns the hits for the caller to draw (muzzle flash, debris,
+     whatever) -- that part IS immediate, only the physics commit is deferred. */
   applyHits() {
     this._poseDirty();
     const out = (this.hits && this.hits.length) ? this.hits.slice() : [];
     if (this.hits) this.hits.length = 0;
-    let dirty = this._pendingSettle;
 
     for (const h of out) {
       const A = h.ammo;
@@ -577,35 +576,23 @@ export class Castle {
       const cy = h.y + (h.dir ? h.dir[1] * d : 0);
       const cz = h.z + (h.dir ? h.dir[2] * d : 0);
       const r = this.damage(cx, cy, cz, A.blastR, A.power, A.crater);
-      if (r.broke || r.gone) dirty = true;
+      if (r.broke || r.gone) this._pendingSettle = true;
       h.at = [cx, cy, cz];
     }
 
     const booms = this.resolveKegs();          // the powder, and its chain
-    if (booms.length) dirty = true;
+    if (booms.length) this._pendingSettle = true;
     this.booms = (this.booms || []).concat(booms);
     for (const b of booms) this._queueBlast(b.at[0], b.at[1], b.at[2], b.r * 1.5, b.impulse);
     for (const h of out) this._queueBlast(h.at[0], h.at[1], h.at[2], h.ammo.blastR * 1.3, h.ammo.impulse);
 
-    this._pendingSettle = false;
-    if (dirty) {
-      this.settleStructure();          // crush the overloaded, shed the hanging
-      this.rebuild(true);
-      const blasts = this._pendingBlasts; this._pendingBlasts = [];
-      for (const b of blasts) this.blast(b.x, b.y, b.z, b.r, b.impulse);
-    } else {
-      this._pendingBlasts.length = 0;  // nothing settled -- nothing to shove
-    }
     return out;
   }
 
-  /* call once per physics step, AFTER Step, and BEFORE applyHits() -- see
-     that method's comment. This method only cracks mortar and resolves
-     kegs; it deliberately does NOT settle or rebuild, so a step where a
-     shot both breaks mortar directly (applyHits) and lands hard enough to
-     fracture on impact (this method) still only pays for ONE settle+rebuild,
-     not two. A castle-sized collapse used to run both, back to back, every
-     single step that had both kinds of damage queued. */
+  /* call once per physics step, AFTER Step. Cracks masonry from hard
+     landings (queued by the contact listener) and resolves any kegs that
+     fuses. Like applyHits() above, does NOT settle or rebuild itself --
+     call commitDamage() to actually apply whatever either method queued. */
   applyImpacts() {
     this._poseDirty();
     if (!this.impacts || !this.impacts.length) return 0;
@@ -635,6 +622,24 @@ export class Castle {
 
     if (broke > 0 || booms.length) this._pendingSettle = true;
     return broke;
+  }
+
+  /* Apply whatever applyImpacts()/applyHits() queued since the last call:
+     ONE settleStructure()+rebuild() pass (not one per method, not one per
+     Step), then the blast impulses. Call this once after you're done
+     calling those for whatever window you want batched together -- once
+     per Step for the headless tools, once per RENDERED FRAME for the
+     viewer (which can run up to 3 Steps per frame catching up) so a burst
+     of simultaneous damage doesn't pay full price 2-3x over.
+     Cheap to call even when nothing is pending. */
+  commitDamage() {
+    const blasts = this._pendingBlasts;
+    this._pendingBlasts = [];
+    if (!this._pendingSettle) return;
+    this._pendingSettle = false;
+    this.settleStructure();            // crush the overloaded, shed the hanging
+    this.rebuild(true);
+    for (const b of blasts) this.blast(b.x, b.y, b.z, b.r, b.impulse);
   }
 
   /* ---------- TENSION: mortar cannot pull -------------------------------
