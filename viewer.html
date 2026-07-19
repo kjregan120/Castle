@@ -948,6 +948,23 @@ function hideMsg()  { $('msg').style.display = 'none'; }
 if (!pickupHandoff()) build('round');
 setMode('castle');
 
+/* ---------------- dev: watch for GPU resource leaks -------------------
+   three.js counts its own live GPU resources (renderer.info.memory) --
+   the precise signal for exactly the class of leak the puff/fireball fix
+   addressed. Logged only when a count changes, throttled to 1/s, so a long
+   quiet stretch doesn't spam the console: a number that climbs and never
+   comes back down between rounds is a leak. */
+let lastMemLog = 0, lastMemKey = '';
+function logGpuMemory(now) {
+  if (now - lastMemLog < 1000) return;
+  lastMemLog = now;
+  const m = renderer.info.memory;
+  const key = `${m.geometries},${m.textures}`;
+  if (key === lastMemKey) return;
+  lastMemKey = key;
+  console.log(`[gpu] geometries=${m.geometries} textures=${m.textures} programs=${renderer.info.programs?.length ?? 0} puffs=${puffs.length} shots=${shots.length}`);
+}
+
 const DT = 1/60;
 let last = performance.now(), acc = 0, fps = 60;
 
@@ -957,6 +974,7 @@ function frame() {
   const dt = Math.min(0.05, (now - last)/1000);
   last = now;
   fps += ((1/Math.max(dt,1e-3)) - fps) * 0.08;
+  logGpuMemory(now);
 
   acc += dt;
   let steps = 0;
