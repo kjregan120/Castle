@@ -18,7 +18,8 @@
       "side": 5,
       "crenels": true,
       "openings": [],
-      "courses": 24
+      "courses": 24,
+      "rings": 1
     },
     {
       "type": "tower",
@@ -29,7 +30,8 @@
       "side": 5,
       "crenels": true,
       "openings": [],
-      "courses": 18
+      "courses": 18,
+      "rings": 1
     },
     {
       "type": "tower",
@@ -40,7 +42,8 @@
       "side": 5,
       "crenels": true,
       "openings": [],
-      "courses": 18
+      "courses": 18,
+      "rings": 1
     },
     {
       "type": "wall",
@@ -60,7 +63,8 @@
       ],
       "closed": false,
       "crenels": true,
-      "openings": []
+      "openings": [],
+      "rings": 1
     },
     {
       "type": "wall",
@@ -80,7 +84,8 @@
       ],
       "closed": false,
       "crenels": true,
-      "openings": []
+      "openings": [],
+      "rings": 1
     },
     {
       "type": "wall",
@@ -104,7 +109,8 @@
       ],
       "closed": false,
       "crenels": true,
-      "openings": []
+      "openings": [],
+      "rings": 1
     },
     {
       "type": "banner",
@@ -160,7 +166,8 @@
       "cz": 0,
       "side": 5,
       "crenels": true,
-      "openings": []
+      "openings": [],
+      "rings": 1
     },
     {
       "type": "wall",
@@ -184,7 +191,8 @@
       ],
       "closed": false,
       "crenels": true,
-      "openings": []
+      "openings": [],
+      "rings": 1
     },
     {
       "type": "wall",
@@ -208,7 +216,8 @@
       ],
       "closed": false,
       "crenels": true,
-      "openings": []
+      "openings": [],
+      "rings": 1
     }
   ]
 }
