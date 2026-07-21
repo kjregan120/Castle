@@ -40,7 +40,7 @@
   /* minimized: just a small draggable pill (grip + label + expand) */
   .dock.min{padding:6px 8px}
   .dock.min .bar{margin-bottom:0}
-  .dock.min .grid,.dock.min .seg,.dock.min #loadbtn,.dock.min #roundsWrap,.dock.min #sndbtn{display:none}
+  .dock.min .grid,.dock.min .seg,.dock.min #loadbtn,.dock.min #scoreWrap,.dock.min #roundsWrap,.dock.min #sndbtn{display:none}
   .dock.min .minlabel{display:inline}
   /* the 6x3 grid */
   .grid{display:grid;grid-template-columns:repeat(6,46px);grid-auto-rows:46px;gap:5px}
@@ -84,6 +84,7 @@
     </div>
     <span class="spacer"></span>
     <button class="mini" id="loadbtn" title="Load a .json plan (L)">load&hellip;</button>
+    <span class="rounds" id="scoreWrap"><b id="score">0</b> pts</span>
     <span class="rounds" id="roundsWrap"><b id="rounds">20</b> shots</span>
     <button class="iconbtn" id="sndbtn" title="Sound on (S)" aria-label="Toggle sound">
       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -144,6 +145,7 @@ const AMMO = {
    but requires real commitment, not a free win. */
 const CHARGE_SPEC = { blastR: 2.2, power: 9, crater: 1.1, impulse: 5000 };
 let selected = 'shell', rounds = 20, nukeUsed = false;
+let totalScore = 0;   // 1 point per brick knocked down (castle.destroyedBricks), across the whole session
 const CRUSH = 2.2;          // overload the stone tolerates before it pulverises
 
 /* ---------------- the roster ----------------------------------------
@@ -333,6 +335,7 @@ function teardown() {
    build() (built-in) and loadPlan() (JSON) both funnel through here, so a
    loaded castle behaves exactly like a shipped one. */
 function instantiate(bricksIn, cameraDist) {
+  if (castle) totalScore += castle.destroyedBricks;   // fold the finished castle's tally into the running score
   teardown();
   jolt   = makeWorld();
   bricks = bricksIn;
@@ -798,12 +801,14 @@ function exitNukeAim() {
 
 /* ---------------- demo charges: place many, detonate together ---------
    Placing doesn't touch `selected` or the camera -- it's a mode you toggle
-   on top of whatever weapon is chosen, same as free aim. Each tap while
-   armed pins a charge (1 round, like any other shot) and a small red
-   marker; the mode stays on so you can keep placing. A second, separate
-   slot detonates every placed charge at once through castle.detonateCharges()
-   + ONE commitDamage() -- twenty charges cost one settle+rebuild, not
-   twenty. See CHARGE_SPEC above for how the power was tuned. */
+   on top of whatever weapon is chosen, same as free aim. One grid slot
+   does both jobs: tap it once to arm (icon swaps to the detonator), tap
+   the castle to pin charges (1 round each, up to 20, marker stays armed
+   the whole time), tap the SAME slot again to blow everything at once --
+   or, if nothing's placed yet, to just stand down. Detonation runs
+   through castle.detonateCharges() + ONE commitDamage(), so twenty
+   simultaneous charges cost one settle+rebuild, not twenty. See
+   CHARGE_SPEC above for how the power was tuned. */
 let placingCharges = false;
 const charges = [];                      // {x,y,z,marker}
 const chargeMat = new THREE.MeshBasicMaterial({ color:0xff2b2b });
@@ -829,11 +834,17 @@ function detonateAllCharges() {
   if (dockMode === 'weapon') drawGrid();
 }
 
-function toggleChargePlacing() {
-  if (nukeAiming) exitNukeAim();
-  placingCharges = !placingCharges;
-  drawGrid();
-  if (placingCharges) toast('tap to pin a charge (1 round each) — tap the slot again to stop, DETONATE to blow them all');
+/* the single demo-charge slot's click handler: arm on the way in, blow
+   (or, if empty, just stand down) on the way out. */
+function chargeSlotClick() {
+  if (!placingCharges) {
+    if (nukeAiming) exitNukeAim();
+    placingCharges = true;
+    drawGrid();
+    toast('tap the castle to pin a charge (1 round each, up to 20) — tap this slot again to detonate');
+    return;
+  }
+  charges.length ? detonateAllCharges() : exitChargePlacing();
 }
 function exitChargePlacing() { placingCharges = false; drawGrid(); }
 function clearCharges() {
@@ -1150,17 +1161,13 @@ function drawGrid() {
         gridEl.appendChild(b); continue;
       }
       if (id === 'chargeplace') {
-        const b = slotEl(placingCharges ? ' on' : '', ICON.chargeplace);
-        b.title = 'Demo charge — tap the castle to pin one (1 round each, up to 20), tap this slot again to stop';
-        b.onclick = () => toggleChargePlacing();
-        gridEl.appendChild(b); continue;
-      }
-      if (id === 'detonate') {
-        const empty = charges.length === 0;
-        const b = slotEl(empty ? ' locked' : '', ICON.detonate);
-        b.title = empty ? 'Detonate — no charges placed yet'
-                         : `Detonate — blow all ${charges.length} placed charge${charges.length === 1 ? '' : 's'} at once`;
-        b.onclick = () => selectWeaponSlot(s);
+        const b = slotEl(placingCharges ? ' on' : '', placingCharges ? ICON.detonate : ICON.chargeplace);
+        b.title = !placingCharges
+          ? 'Demo charge — tap to arm, then tap the castle to pin up to 20 (1 round each)'
+          : charges.length
+            ? `Detonate — blow all ${charges.length} placed charge${charges.length === 1 ? '' : 's'} at once`
+            : 'Tap the castle to pin a charge, or tap here to stand down';
+        b.onclick = () => chargeSlotClick();
         gridEl.appendChild(b); continue;
       }
       const A = AMMO[id];
@@ -1179,16 +1186,12 @@ function selectCastleSlot(s) {
   e.kind === 'builtin' ? build(e.id) : loadPlan(custom[e.name], { register:false });
   setMode('castle');
 }
-const weaponSlotIds = () => [...Object.keys(AMMO), 'freeaim', 'chargeplace', 'detonate'];
+const weaponSlotIds = () => [...Object.keys(AMMO), 'freeaim', 'chargeplace'];
 function selectWeaponSlot(s) {
   const id = weaponSlotIds()[s];
   if (!id) { toast('That weapon slot is empty.'); return; }
   if (id === 'freeaim') { toggleFreeAim(); return; }
-  if (id === 'detonate') {
-    if (!charges.length) { toast('No charges placed yet.'); return; }
-    detonateAllCharges();
-    return;
-  }
+  if (id === 'chargeplace') { chargeSlotClick(); return; }
   if (id === 'nuke') {
     if (nukeAiming) { exitNukeAim(); return; }                      // tap again to cancel
     if (nukeUsed) { toast('The nuke is already spent this round.'); return; }
@@ -1203,6 +1206,7 @@ function pick(id) { if (nukeAiming) exitNukeAim(); selected = id; setMode('weapo
 function updateHud() {
   $('rounds').textContent = rounds;
   $('roundsWrap').classList.toggle('low', rounds <= 3);
+  $('score').textContent = totalScore + (castle ? castle.destroyedBricks : 0);
 }
 function showMsg(t, sub) {
   const el = $('msgtext');
