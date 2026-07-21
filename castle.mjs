@@ -536,7 +536,15 @@ export class Castle {
     this.projectiles.set(bodyID.GetIndexAndSequenceNumber(), ammo);
   }
 
-  /* fire a round. Returns the Jolt body so the caller can draw & remove it. */
+  /* fire a round. Returns the Jolt body so the caller can draw & remove it.
+
+     mLinearDamping defaults to 0.05 (5%/s velocity decay) -- fine for
+     rubble, but ballistic() (and the viewer's trajectory preview) both
+     assume ideal undamped projectile motion. Over a fast, flat shot the
+     difference is a few centimetres and invisible; over a mortar's ~5 s
+     lobbed arc it compounds into landing multiple METRES short of where
+     the player aimed. Zero it so the round actually flies the parabola
+     it was aimed on. */
   fire(from, dir, ammo) {
     const J = this.Jolt;
     const shape = new J.SphereShape(ammo.calibre);
@@ -547,6 +555,7 @@ export class Castle {
     cfg.mOverrideMassProperties = J.EOverrideMassProperties_CalculateInertia;
     cfg.mMassPropertiesOverride.mMass = ammo.mass;
     cfg.mRestitution = 0.05;
+    cfg.mLinearDamping = 0;
     const body = this.bi.CreateBody(cfg);
     J.destroy(cfg);
     body.SetLinearVelocity(new J.Vec3(
