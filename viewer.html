@@ -130,15 +130,15 @@ const QI = () => Jolt.Quat.prototype.sIdentity();
 
 /* ---------------- ammunition ---------------------------------------- */
 const AMMO = {
-  solid:  { name:'solid shot', note:'small, precise. chips one spot.', key:'q',
-            calibre:0.22, mass:180, speed:120, crater:0.40, blastR:0.85, power:1.5, impulse:400 },
+  solid:  { name:'solid shot', note:'small, precise. chips one spot -- but chips it hard.', key:'q',
+            calibre:0.22, mass:180, speed:120, crater:0.45, blastR:0.95, power:9,  impulse:1200 },
   shell:  { name:'explosive shell', note:'the workhorse. widen a breach at the base.', key:'w',
             calibre:0.30, mass:150, speed:95,  crater:0.70, blastR:1.40, power:20.2, impulse:8000 },
   pene:   { name:'penetrator', note:'narrow, deep. goes off INSIDE the wall. the round that reaches a magazine.', key:'e',
-            calibre:0.16, mass:220, speed:150, crater:0.50, blastR:1.05, power:2.6, impulse:500,
+            calibre:0.16, mass:220, speed:150, crater:0.55, blastR:1.15, power:14, impulse:3000,
             penetration:1.4 },
-  mortar: { name:'mortar', note:'lobs OVER a curtain wall and comes down steep. slow.', key:'a',
-            calibre:0.34, mass:170, speed:26,  crater:0.75, blastR:1.55, power:2.3, impulse:900,
+  mortar: { name:'mortar', note:'lobs OVER a curtain wall and comes down steep and heavy. slow.', key:'a',
+            calibre:0.34, mass:170, speed:26,  crater:0.78, blastR:1.50, power:13, impulse:4200,
             arc:'high' },
   nuke:   { name:'tactical nuke', note:'one per round, costs 10 rounds. aim from above, then drop it.',
             calibre:0.5, mass:700, speed:40, crater:3.0, blastR:5.5, power:24, impulse:45000,
