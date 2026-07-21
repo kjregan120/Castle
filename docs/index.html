@@ -137,6 +137,12 @@ const AMMO = {
             calibre:0.5, mass:700, speed:40, crater:3.0, blastR:5.5, power:24, impulse:45000,
             cost:10 },
 };
+/* demo charge: not fired, PLACED -- pin up to 20 spots (1 round each,
+   same pool everything else draws from), then detonate all of them at
+   once. Tuned headlessly: half your rounds' worth reliably topples the
+   round tower, a full 20-charge spread the castle plan -- meaningful
+   but requires real commitment, not a free win. */
+const CHARGE_SPEC = { blastR: 2.2, power: 9, crater: 1.1, impulse: 5000 };
 let selected = 'shell', rounds = 20, nukeUsed = false;
 const CRUSH = 2.2;          // overload the stone tolerates before it pulverises
 
@@ -368,6 +374,7 @@ function instantiate(bricksIn, cameraDist) {
   dist = cameraDist;
   nukeUsed = false;
   if (nukeAiming) exitNukeAim();
+  clearCharges();            // markers are world-space points tied to the OLD geometry
   hideTrajectoryPreview();   // stale until the next pointer move over the new geometry
   hideMsg();
   sync();
@@ -774,6 +781,7 @@ function confirmNukeTarget(clientX, clientY) {
   if (nukeTarget) { fireNuke(nukeTarget); exitNukeAim(); }
 }
 function enterNukeAim() {
+  if (placingCharges) exitChargePlacing();
   prevSelected = selected;
   nukeAiming = true;
   selected = 'nuke';
@@ -786,6 +794,52 @@ function exitNukeAim() {
   reticle.visible = false;
   nukeTarget = null;
   drawGrid();
+}
+
+/* ---------------- demo charges: place many, detonate together ---------
+   Placing doesn't touch `selected` or the camera -- it's a mode you toggle
+   on top of whatever weapon is chosen, same as free aim. Each tap while
+   armed pins a charge (1 round, like any other shot) and a small red
+   marker; the mode stays on so you can keep placing. A second, separate
+   slot detonates every placed charge at once through castle.detonateCharges()
+   + ONE commitDamage() -- twenty charges cost one settle+rebuild, not
+   twenty. See CHARGE_SPEC above for how the power was tuned. */
+let placingCharges = false;
+const charges = [];                      // {x,y,z,marker}
+const chargeMat = new THREE.MeshBasicMaterial({ color:0xff2b2b });
+const chargeGeo = new THREE.SphereGeometry(0.22, 10, 8);
+
+function placeCharge(target) {
+  if (won || lost || rounds <= 0 || charges.length >= 20) return;
+  rounds--;
+  const m = new THREE.Mesh(chargeGeo, chargeMat);
+  m.position.set(target.x, target.y + 0.15, target.z);
+  scene.add(m);
+  charges.push({ x: target.x, y: target.y, z: target.z, marker: m });
+  updateHud();
+  if (dockMode === 'weapon') drawGrid();
+  sfxCannon();
+}
+
+function detonateAllCharges() {
+  if (!charges.length || won || lost) return;
+  castle.detonateCharges(charges.map(c => ({ x:c.x, y:c.y, z:c.z, spec:CHARGE_SPEC })));
+  castle.commitDamage();
+  clearCharges();             // also turns placing mode off -- the cycle's done
+  if (dockMode === 'weapon') drawGrid();
+}
+
+function toggleChargePlacing() {
+  if (nukeAiming) exitNukeAim();
+  placingCharges = !placingCharges;
+  drawGrid();
+  if (placingCharges) toast('tap to pin a charge (1 round each) — tap the slot again to stop, DETONATE to blow them all');
+}
+function exitChargePlacing() { placingCharges = false; drawGrid(); }
+function clearCharges() {
+  for (const c of charges) scene.remove(c.marker);
+  charges.length = 0;
+  placingCharges = false;
 }
 
 const pointers = new Map();              // active pointers: id -> {x,y}
@@ -842,7 +896,8 @@ function releasePointer(e) {
   const hit = ray.intersectObject(mesh, false)[0]
            || (kegMesh ? ray.intersectObject(kegMesh, false)[0] : null)
            || ray.intersectObject(ground, false)[0];
-  if (hit) fire(hit.point);
+  if (!hit) return;
+  placingCharges ? placeCharge(hit.point) : fire(hit.point);
 }
 addEventListener('pointerup', releasePointer);
 addEventListener('pointercancel', e => { pointers.delete(e.pointerId); if (e.pointerId === dragId) dragId = null; pinchStart = null; });
@@ -851,7 +906,7 @@ addEventListener('pointercancel', e => { pointers.delete(e.pointerId); if (e.poi
    you commit to the shot. Runs during a drag as well, which is fine --
    it just tracks wherever the pointer currently is. */
 addEventListener('pointermove', e => {
-  if (selected === 'mortar' && !nukeAiming && !inUI(e)) updateTrajectoryPreview(e.clientX, e.clientY);
+  if (selected === 'mortar' && !nukeAiming && !placingCharges && !inUI(e)) updateTrajectoryPreview(e.clientX, e.clientY);
 });
 addEventListener('wheel', e => { dist = Math.max(12, Math.min(95, dist + e.deltaY*0.03)); }, {passive:true});
 /* Keys: M minimizes, S toggles sound, R rebuilds the active castle, L loads a plan. */
@@ -1002,6 +1057,10 @@ const ICON = {
                `<path d="M9 8.5 L10.3 6 H13.7 L15 8.5"/>` +
                `<circle cx="12" cy="14" r="3.2"/>` +
                `<circle cx="12" cy="14" r="0.9" fill="currentColor" stroke="none"/>`),
+  chargeplace: svg(`<path d="M12 21 C12 21 6 14 6 9.5 A6 6 0 0 1 18 9.5 C18 14 12 21 12 21 Z"/>` +
+                    `<circle cx="12" cy="9.5" r="2" fill="currentColor" stroke="none"/>`),
+  detonate: svg(`<rect x="6" y="15" width="12" height="6" rx="1.2"/>` +
+                `<path d="M12 15 V6"/><path d="M7.5 6 H16.5"/>`),
 };
 const castleIcon = e => ICON[e.id] || ICON.custom;
 
@@ -1090,6 +1149,20 @@ function drawGrid() {
         b.onclick = () => toggleFreeAim();
         gridEl.appendChild(b); continue;
       }
+      if (id === 'chargeplace') {
+        const b = slotEl(placingCharges ? ' on' : '', ICON.chargeplace);
+        b.title = 'Demo charge — tap the castle to pin one (1 round each, up to 20), tap this slot again to stop';
+        b.onclick = () => toggleChargePlacing();
+        gridEl.appendChild(b); continue;
+      }
+      if (id === 'detonate') {
+        const empty = charges.length === 0;
+        const b = slotEl(empty ? ' locked' : '', ICON.detonate);
+        b.title = empty ? 'Detonate — no charges placed yet'
+                         : `Detonate — blow all ${charges.length} placed charge${charges.length === 1 ? '' : 's'} at once`;
+        b.onclick = () => selectWeaponSlot(s);
+        gridEl.appendChild(b); continue;
+      }
       const A = AMMO[id];
       const spent = id === 'nuke' && (nukeUsed || rounds < A.cost);
       const b = slotEl((id === selected ? ' on' : '') + (spent ? ' locked' : ''), ICON[id] || ICON.locked);
@@ -1106,11 +1179,16 @@ function selectCastleSlot(s) {
   e.kind === 'builtin' ? build(e.id) : loadPlan(custom[e.name], { register:false });
   setMode('castle');
 }
-const weaponSlotIds = () => [...Object.keys(AMMO), 'freeaim'];
+const weaponSlotIds = () => [...Object.keys(AMMO), 'freeaim', 'chargeplace', 'detonate'];
 function selectWeaponSlot(s) {
   const id = weaponSlotIds()[s];
   if (!id) { toast('That weapon slot is empty.'); return; }
   if (id === 'freeaim') { toggleFreeAim(); return; }
+  if (id === 'detonate') {
+    if (!charges.length) { toast('No charges placed yet.'); return; }
+    detonateAllCharges();
+    return;
+  }
   if (id === 'nuke') {
     if (nukeAiming) { exitNukeAim(); return; }                      // tap again to cancel
     if (nukeUsed) { toast('The nuke is already spent this round.'); return; }
@@ -1216,7 +1294,14 @@ function frame() {
     lost = true; onRoundEnd(false);
   }
 
-  if (selected !== 'mortar' || nukeAiming) hideTrajectoryPreview();
+  if (selected !== 'mortar' || nukeAiming || placingCharges) hideTrajectoryPreview();
+
+  if (charges.length) {
+    // shared material -- every marker blinks in unison, which reads fine
+    // for "these are all armed" and costs one uniform update, not N.
+    chargeMat.opacity = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(now * 0.008));
+    chargeMat.transparent = true;
+  }
 
   if (nukeAiming) {
     // looking straight down is a degenerate case for lookAt's default

@@ -836,4 +836,26 @@ export class Castle {
 
   /* detonations since the last call, for the renderer to turn into fireballs */
   drainBooms() { const b = this.booms || []; this.booms = []; return b; }
+
+  /* PLAYER-PLACED CHARGES. Same mechanism as a keg going up -- a damage()
+     call plus a queued blast -- just triggered by the player's own action
+     instead of being hit. `charges` is [{x,y,z,spec}]; spec is the same
+     shape as a keg's ({blastR,power,crater,impulse}). All of them queue
+     into the SAME commitDamage() pass the caller runs right after, so
+     twenty simultaneous charges cost one settle+rebuild, not twenty.
+     Returns the detonation points, same shape as resolveKegs(), so the
+     caller's existing drainBooms()-driven fireball rendering picks them
+     up for free. */
+  detonateCharges(charges) {
+    const out = [];
+    for (const c of charges) {
+      const S = c.spec;
+      this.damage(c.x, c.y, c.z, S.blastR, S.power, S.crater);
+      this._queueBlast(c.x, c.y, c.z, S.blastR * 1.3, S.impulse);
+      out.push({ at: [c.x, c.y, c.z], r: S.blastR, impulse: S.impulse });
+    }
+    if (charges.length) this._pendingSettle = true;
+    this.booms = (this.booms || []).concat(out);
+    return out;
+  }
 }
