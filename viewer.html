@@ -29,7 +29,6 @@
     background:#eef3f8;border:1px solid #c6d2dc;border-radius:4px}
   .mini:hover{border-color:#2f6fb0;background:#e2edf8}
   .mini.hide{display:none}
-  .mini.on{background:#cfe4f7;border-color:#2f6fb0;color:#0f1721;box-shadow:inset 0 0 0 1px #2f6fb0}
   .iconbtn{font:inherit;font-size:15px;line-height:1;width:20px;height:20px;flex:none;
     display:grid;place-items:center;cursor:pointer;color:#5b6b7c;
     background:#eef3f8;border:1px solid #c6d2dc;border-radius:4px}
@@ -90,7 +89,6 @@
     </div>
     <span class="spacer"></span>
     <button class="mini" id="loadbtn" title="Load a .json plan (L)">load&hellip;</button>
-    <button class="mini hide" id="freeaimbtn" title="Fire from wherever the camera is looking, instead of the fixed cannon">free aim</button>
     <span class="rounds" id="roundsWrap"><b id="rounds">20</b> shots</span>
     <button class="iconbtn" id="sndbtn" title="Sound on (S)" aria-label="Toggle sound">
       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -936,6 +934,10 @@ const ICON = {
   nuke: svg(`<circle cx="12" cy="14" r="5.6"/>` +
             `<path d="M12 8.4 V4.8"/><path d="M9.6 5.6 L12 3.4 L14.4 5.6"/>` +
             `<path d="M7.2 18.5 L4.4 21.2 M16.8 18.5 L19.6 21.2"/>`),
+  freeaim: svg(`<rect x="4" y="8.5" width="16" height="11" rx="1.6"/>` +
+               `<path d="M9 8.5 L10.3 6 H13.7 L15 8.5"/>` +
+               `<circle cx="12" cy="14" r="3.2"/>` +
+               `<circle cx="12" cy="14" r="0.9" fill="currentColor" stroke="none"/>`),
 };
 const castleIcon = e => ICON[e.id] || ICON.custom;
 
@@ -957,14 +959,16 @@ const loadBtn = $('loadbtn');
 const GRID_SLOTS = 18;
 
 /* free aim: fire from wherever the camera currently is instead of the
-   fixed cannon -- lets you orbit around and shoot from any angle. */
+   fixed cannon -- lets you orbit around and shoot from any angle. Lives
+   as its own slot in the weapon grid (see weaponSlotIds()/drawGrid),
+   not a separate button -- it's a firing-mode toggle, independent of
+   whichever ammo is selected, so both can show 'on' at once. */
 let freeAim = false;
-const freeaimBtn = $('freeaimbtn');
-freeaimBtn.onclick = () => {
+function toggleFreeAim() {
   freeAim = !freeAim;
-  freeaimBtn.classList.toggle('on', freeAim);
   gun.visible = !freeAim;   // no single fixed muzzle to show once you can fire from anywhere
-};
+  drawGrid();
+}
 
 function slotEl(cls, icon, extra = '') {
   const b = document.createElement('button');
@@ -979,7 +983,6 @@ function setMode(m) {
   dockMode = m;
   [...seg.children].forEach(btn => btn.classList.toggle('on', btn.dataset.mode === m));
   loadBtn.classList.toggle('hide', m !== 'castle');   // loading a plan is a castle action
-  freeaimBtn.classList.toggle('hide', m !== 'weapon'); // free aim is a weapon-console control
   drawGrid();
 }
 seg.addEventListener('click', e => {
@@ -1008,15 +1011,22 @@ function drawGrid() {
       gridEl.appendChild(b);
     }
   } else {
-    const ids = Object.keys(AMMO);           // built weapons, then locked slots
+    const ids = weaponSlotIds();             // built weapons, then free aim, then locked slots
     for (let s = 0; s < GRID_SLOTS; s++) {
-      const id = ids[s], A = id ? AMMO[id] : null;
-      if (!A) {
+      const id = ids[s];
+      if (!id) {
         const b = slotEl(' locked', ICON.locked);
         b.title = 'Weapon slot — not built yet';
         b.onclick = () => toast('That weapon isn\'t built yet.');
         gridEl.appendChild(b); continue;
       }
+      if (id === 'freeaim') {
+        const b = slotEl(freeAim ? ' on' : '', ICON.freeaim);
+        b.title = 'Free aim — fire from wherever the camera is looking, instead of the fixed cannon';
+        b.onclick = () => toggleFreeAim();
+        gridEl.appendChild(b); continue;
+      }
+      const A = AMMO[id];
       const spent = id === 'nuke' && (nukeUsed || rounds < A.cost);
       const b = slotEl((id === selected ? ' on' : '') + (spent ? ' locked' : ''), ICON[id] || ICON.locked);
       b.title = spent ? `${A.name} — spent this round` : `${A.name}${A.note ? ' — ' + A.note : ''}`;
@@ -1032,9 +1042,11 @@ function selectCastleSlot(s) {
   e.kind === 'builtin' ? build(e.id) : loadPlan(custom[e.name], { register:false });
   setMode('castle');
 }
+const weaponSlotIds = () => [...Object.keys(AMMO), 'freeaim'];
 function selectWeaponSlot(s) {
-  const id = Object.keys(AMMO)[s];
+  const id = weaponSlotIds()[s];
   if (!id) { toast('That weapon slot is empty.'); return; }
+  if (id === 'freeaim') { toggleFreeAim(); return; }
   if (id === 'nuke') {
     if (nukeAiming) { exitNukeAim(); return; }                      // tap again to cancel
     if (nukeUsed) { toast('The nuke is already spent this round.'); return; }
