@@ -61,6 +61,11 @@ for (const [key, plan] of Object.entries(PLANS)) {
   c.rebuild();
   const build = performance.now() - t0;
   const kegs0 = c.kegsLeft();
+  // loose knights are exactly like kegs here: each is legitimately its own
+  // body, not a sign the structure fell apart -- count them the same way.
+  const looseKnights0 = new Set(
+    bricks.filter(b => b.knight && !b.knight.mortared).map(b => b.knight.id)
+  ).size;
 
   /* --- Q1: control. fire nothing for 6 s. --- */
   const h0 = c.bannerHeight();
@@ -70,7 +75,7 @@ for (const [key, plan] of Object.entries(PLANS)) {
   }
   const h1 = c.bannerHeight();
   const drift = (h0 - h1) * 1000;
-  const stands = drift < 300 && c.bodies.length <= Math.max(2, kegs0 + 2);
+  const stands = drift < 300 && c.bodies.length <= Math.max(2, kegs0 + looseKnights0 + 2);
 
   /* --- Q3: one round, aimed at the powder. --- */
   const aim = key === 'castle' ? [2.0, 1.0, 0] : [0, 1.0, 0];   // the magazine

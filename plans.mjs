@@ -195,6 +195,42 @@ export function magazine(bricks, x, y, z, n = 4, spread = 0.9, spec = {}) {
   return bricks;
 }
 
+/* ---------- knights: a blocky defender, six boxes ---------------------
+   There is no actor/AI layer in this engine -- nothing here is animated
+   or scripted. A knight is a physics prop exactly like the banner or a
+   keg: a handful of ordinary bricks, tagged so castle.mjs knows to treat
+   them specially in three small ways (see makeMortar/damage/rebuild):
+     - the knight's own pieces ALWAYS bond to each other, so it topples
+       and flies as one coherent figure, never explodes into loose boxes.
+     - `mortared: true` also bonds it to whatever it's standing on, so it
+       comes down WITH the wall/tower when that goes; `mortared: false`
+       (the default) leaves it standing alone, like a keg -- the first
+       hit that reaches it sends it flying on its own.
+     - it's excluded from crater removal (like the banner) so a direct
+       hit knocks it flying instead of just deleting it.
+   `yaw` follows the same convention as everything else here: local +x is
+   the direction the knight faces. */
+let _knightSerial = 0;
+export function addKnight(bricks, x, z, opts = {}) {
+  const { yaw = 0, baseY = 0, mortared = false } = opts;
+  const id = _knightSerial++;
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
+  const put = (lx, ly, lz, hx, hy, hz, tag) => {
+    bricks.push({
+      p: [x + lx * cy + lz * sy, baseY + ly, z - lx * sy + lz * cy],
+      h: [hx, hy, hz], yaw, course: 0, ring: 0, isBanner: false, tag,
+      knight: { id, mortared },
+    });
+  };
+  put(0,    0.35, 0,      0.16, 0.35, 0.14, 'knight-legs');
+  put(0,    0.95, 0,      0.20, 0.25, 0.16, 'knight-torso');
+  put(0,    1.31, 0,      0.11, 0.11, 0.11, 'knight-head');
+  put(0,    0.95, 0.26,   0.08, 0.22, 0.08, 'knight-arm');
+  put(0,    0.95, -0.26,  0.08, 0.22, 0.08, 'knight-arm');
+  put(0.30, 1.05, -0.26,  0.30, 0.025, 0.025, 'knight-spear');
+  return bricks;
+}
+
 /* =====================================================================
    THE PLANS
    Each returns a brick array ready for makeMortar(). `blurb` is for the HUD.
@@ -236,6 +272,7 @@ export function castle(P = {}) {
     towerH = 16,         // corner tower courses
     courseH = 0.45,
     powder = true,
+    knights = true,
   } = P;
 
   const bricks = [];
@@ -285,6 +322,19 @@ export function castle(P = {}) {
     for (const [cx, cz] of corners) addKeg(bricks, cx, 0.45, cz, { blastR: 2.8, power: 2.0, crater: 1.7 });
     addKeg(bricks, -3.5, 0.45,  4.5);
     addKeg(bricks, -3.5, 0.45, -4.5);
+  }
+
+  /* THE GARRISON. Two mortared onto curtain walls (come down WITH them --
+     a tower's interior is a hollow shaft with no floor, so wall-tops are
+     the only place that's actually solid to stand on), and two standing
+     loose flanking the keep's door -- each goes down on its own the
+     moment anything reaches them. Both placement modes side by side,
+     on purpose. */
+  if (knights) {
+    addKnight(bricks, -h, 0, { yaw: Math.PI, baseY: (wallH - 1) * courseH, mortared: true });          // west wall-top
+    addKnight(bricks, 0, -h, { yaw: -Math.PI / 2, baseY: (wallH - 1) * courseH, mortared: true });     // south wall-top
+    addKnight(bricks, kx - 1.7, kz + 1.3, { yaw: Math.PI, mortared: false });
+    addKnight(bricks, kx - 1.7, kz - 1.3, { yaw: Math.PI, mortared: false });
   }
   return bricks;
 }

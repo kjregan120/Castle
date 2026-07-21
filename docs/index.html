@@ -354,6 +354,7 @@ function instantiate(bricksIn, cameraDist) {
   for (let i = 0; i < bricks.length; i++) {
     const b = bricks[i];
     if (b.isBanner) col.set(b.pole ? 0x8a7a5c : 0xb3402f);
+    else if (b.knight) col.set(b.tag === 'knight-spear' ? 0x6b4a2c : b.tag === 'knight-head' ? 0x9aa2ac : 0x5c6470);
     else col.setHSL(0.10, 0.13, 0.56 + ((i*2654435761)%1000)/1000*0.16);   // stable per-brick jitter
     mesh.setColorAt(i, col);
   }
