@@ -68,11 +68,6 @@
   #msg div{font-size:34px;letter-spacing:.22em;color:#fff;text-shadow:0 2px 24px #000a;
     max-width:92vw;text-align:center;line-height:1.3}
   #msg .sub{display:block;font-size:15px;letter-spacing:.08em;margin-top:10px}
-  #tip{position:fixed;top:14px;left:14px;color:#22303c;text-shadow:0 1px 0 #fff6;
-    font-size:12px;max-width:calc(100vw - 28px);z-index:3}
-  #tip b{color:#0f1721}
-  #tip .k{display:inline-block;background:#ffffffbb;border:1px solid #c6d2dc;border-radius:3px;
-    padding:0 4px;margin:0 1px;color:#2f6fb0;font-weight:600}
   #drop{position:fixed;inset:0;display:none;place-items:center;background:#2f6fb033;
     border:3px dashed #2f6fb0;pointer-events:none;z-index:5}
   #drop div{font-size:22px;letter-spacing:.1em;color:#1c3550;background:#ffffffcc;
@@ -105,8 +100,6 @@
 <div id="note"></div>
 <div id="msg"><div id="msgtext"></div></div>
 <div id="drop"><div>drop a .json plan to lay siege to it</div></div>
-<div id="tip">drag orbit &middot; scroll/pinch zoom &middot; <b>click/tap the castle to fire</b> &middot;
-  <span class="k">M</span> minimize &middot; <span class="k">S</span> sound &middot; <span class="k">R</span> rebuild &middot; <span class="k">L</span> load</div>
 <input id="file" type="file" accept="application/json,.json" hidden>
 
 <script type="importmap">
@@ -748,7 +741,7 @@ function sync() {
    One pointer-event system covers mouse, touch and pen: a single pointer
    drags to orbit, two fingers pinch to zoom (there's no wheel on a phone),
    and a quick tap/click that didn't drag fires at whatever it lands on. */
-const inUI = e => e.target.closest('#dock,#tip,#note,#msg,#drop');   // clicks here never fire or orbit
+const inUI = e => e.target.closest('#dock,#note,#msg,#drop');   // clicks here never fire or orbit
 let yaw = -Math.PI/2, pitch = 0.22, dist = 34;                       // start behind the gun, looking down the barrel
 const ray = new THREE.Raycaster();
 
