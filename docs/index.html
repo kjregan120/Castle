@@ -1290,8 +1290,8 @@ function frame() {
   if (!won && !lost && castle.bannerDown()) {
     settle += dt;
     if (settle > 0.8) { won = true; onRoundEnd(true); }
-  } else if (!won && !lost && rounds === 0 && shots.length === 0 && castle.awake() === 0) {
-    lost = true; onRoundEnd(false);
+  } else if (!won && !lost && rounds === 0 && shots.length === 0 && charges.length === 0 && castle.awake() === 0) {
+    lost = true; onRoundEnd(false);   // armed, undetonated charges are a reason to keep the round alive
   }
 
   if (selected !== 'mortar' || nukeAiming || placingCharges) hideTrajectoryPreview();
