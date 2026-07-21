@@ -209,13 +209,11 @@ export function squareTower(P = {}) {
     closed: true, thickness: wall, rings, courses, courseH, brickL, crenels: true,
   });
   const topY = courseH * courses;
-  // a small magazine at the foot of the stair, inside the tower
-  magazine(bricks, 0, 0.44, 0, 3, 0.8);
   plantBanner(bricks, side / 2 - wall / 2, topY, 0);
   return bricks;
 }
 
-/* --- keep: a fat square tower with a magazine in its undercroft ----- */
+/* --- keep: a fat square tower, thick-walled and unpowered ----------- */
 export function keep(P = {}) {
   const { side = 7.0, wall = 1.0, courses = 26, courseH = 0.42, brickL = 0.62, rings = 2,
           cx = 0, cz = 0, baseY = 0, banner = true } = P;
@@ -228,9 +226,9 @@ export function keep(P = {}) {
 }
 
 /* --- the castle: curtain walls, corner towers, gatehouse, keep ------
-       and the powder. Aim: the walls are a shield, the magazines are the
-       prize. Breach the wall, then put a penetrator through the breach
-       into the keep's undercroft and the whole thing goes up at once. */
+       and some powder. Aim: the walls are a shield. A keg in a corner
+       tower is a lucky shortcut if you can reach it, but the keep itself
+       carries no magazine -- breach the wall and bring it down on merit. */
 export function castle(P = {}) {
   const {
     court = 17,          // courtyard side, m
@@ -271,20 +269,19 @@ export function castle(P = {}) {
   }
 
   /* the keep, off-centre so the gate has a bailey in front of it.
-     It must be SLENDER. A fat keep just sits down on its own rubble when the
-     magazine goes up -- the base is gone and the banner is still 7 m in the
-     air, which reads as a fizzle. 5.6 m wide x 12 m tall topples properly. */
+     It must be SLENDER -- a fat keep just sits down on its own rubble
+     once its base is undermined, banner still 7 m in the air, which
+     reads as a fizzle. 5.6 m wide x 12 m tall topples properly. No
+     magazine of its own: it has to be earned by direct fire. */
   const kx = 2.2, kz = 0;
   keep({ side: 4.8, wall: 0.8, courses: 30, courseH,
          brickL: 0.58, rings: 2, cx: kx, cz: kz }).forEach(b => bricks.push(b));
 
   /* THE POWDER.
-     - the keep's undercroft: the big one. Sets off everything near it.
      - one keg in each corner tower: a lucky shot brings the tower down.
-     - a couple in the bailey, in the open, for the player who overshoots. */
+     - a couple in the bailey, in the open, for the player who overshoots.
+     The keep itself carries none. */
   if (powder) {
-    magazine(bricks, kx - 1.1, 0.45, kz, 4, 0.75,     // against the WEST wall, not centred
-             { blastR: 3.4, power: 2.4, crater: 2.1, impulse: 30000 });
     for (const [cx, cz] of corners) addKeg(bricks, cx, 0.45, cz, { blastR: 2.8, power: 2.0, crater: 1.7 });
     addKeg(bricks, -3.5, 0.45,  4.5);
     addKeg(bricks, -3.5, 0.45, -4.5);
@@ -307,18 +304,14 @@ export const PLANS = {
     make: () => squareTower(),
   },
   keep: {
-    name: 'keep + magazine',
-    blurb: 'powder in the undercroft. put one through the door and stand back.',
+    name: 'keep',
+    blurb: 'a single fortified keep. no powder — earn it brick by brick.',
     camera: 36,
-    make: () => {
-      const b = keep({ side: 5.6, wall: 0.85, courses: 28, courseH: 0.42, brickL: 0.6 });
-      magazine(b, 0, 0.45, 0, 5, 1.3, { blastR: 3.4, power: 2.4, crater: 2.1, impulse: 30000 });
-      return b;
-    },
+    make: () => keep({ side: 5.6, wall: 0.85, courses: 28, courseH: 0.42, brickL: 0.6 }),
   },
   castle: {
     name: 'castle',
-    blurb: 'curtain walls, four towers, gate, keep. the powder is inside.',
+    blurb: 'curtain walls, four towers, gate, keep. powder in the towers, none in the keep.',
     camera: 52,
     make: () => castle(),
   },
