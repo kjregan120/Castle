@@ -26,12 +26,13 @@
      keg      { x, y?, z?, spec?:{blastR,power,crater,impulse} }
      magazine { x, y?, z?, n?, spread?, spec? }
      banner   { on?:<element id> }  OR  { x, y, z }
+     knight   { x, z, yaw?, baseY?, mortared? }
 
    An `openings` entry is { x, z, w, from, to }: courses from..to are skipped
    within w/2 metres of (x,z) -- a gate, or a window.
 ------------------------------------------------------------------- */
 
-import { layPath, square, ngon, addKeg, magazine, plantBanner } from './plans.mjs';
+import { layPath, square, ngon, addKeg, magazine, plantBanner, addKnight } from './plans.mjs';
 import { makeMortar, components } from './castle.mjs';
 
 /* the defaults a wall/tower falls back to, matching plans.mjs's house style */
@@ -107,6 +108,11 @@ export function buildPlan(plan) {
         magazine(bricks, el.x, el.y ?? 0.45, el.z ?? 0,
                  el.n ?? 4, el.spread ?? 0.9, el.spec ?? {});
         break;
+      case 'knight':
+        addKnight(bricks, el.x, el.z ?? 0, {
+          yaw: el.yaw ?? 0, baseY: el.baseY ?? 0, mortared: !!el.mortared,
+        });
+        break;
       case 'banner': {
         if (el.on != null) {
           const ref = byId.get(el.on);
@@ -140,7 +146,7 @@ export function validatePlan(bricks) {
   const group = new Int32Array(bricks.length).fill(-1);
   groups.forEach((g, gi) => { for (const i of g) group[i] = gi; });
 
-  const isStone = i => !bricks[i].isKeg && !bricks[i].isBanner;
+  const isStone = i => !bricks[i].isKeg && !bricks[i].isBanner && !bricks[i].knight;
 
   // the main structure = the largest group that is actual stone
   let main = -1, mainSize = -1;
@@ -168,10 +174,11 @@ export function validatePlan(bricks) {
   }
 
   const kegs = bricks.filter(b => b.isKeg).length;
+  const knights = new Set(bricks.filter(b => b.knight).map(b => b.knight.id)).size;
   return {
     ok: issues.length === 0,
     issues,
     stats: { bricks: bricks.length, joints: links.length, components: groups.length,
-             kegs, mainStone: mainSize },
+             kegs, knights, mainStone: mainSize },
   };
 }

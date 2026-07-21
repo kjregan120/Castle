@@ -118,6 +118,7 @@ const TOOLS = {
   keg:      { key:'K', tip:'click to place a powder keg' },
   magazine: { key:'M', tip:'click to place a magazine (a cluster of kegs)' },
   banner:   { key:'B', tip:'click a tower to plant the banner on it · or click open ground' },
+  knight:   { key:'N', tip:'click to place a knight · set mortared + facing on the right' },
 };
 const ICON = {
   select:'<path d="M4 3l7 16 2-6 6-2z" fill="#1c2530"/>',
@@ -127,6 +128,7 @@ const ICON = {
   keg:'<ellipse cx="10" cy="10" rx="6" ry="7" fill="#a8482f"/><path d="M4 10h12M6 6h8M6 14h8" stroke="#6e2c1c" stroke-width=".8"/>',
   magazine:'<circle cx="7" cy="8" r="3.2" fill="#a8482f"/><circle cx="13" cy="9" r="3.2" fill="#a8482f"/><circle cx="10" cy="13" r="3.2" fill="#a8482f"/>',
   banner:'<path d="M6 3v15" stroke="#8a7a5c" stroke-width="1.4"/><path d="M6 4h9l-2 3 2 3H6z" fill="#b3402f"/>',
+  knight:'<circle cx="10" cy="6" r="2.4" fill="#9aa2ac"/><path d="M10 8.5v6" stroke="#5c6470" stroke-width="2"/><path d="M6.5 11h7" stroke="#5c6470" stroke-width="1.6"/><path d="M10 14.5l-3 4M10 14.5l3 4" stroke="#5c6470" stroke-width="1.6"/><path d="M13 9l4-2" stroke="#6b4a2c" stroke-width="1.4"/>',
 };
 let tool = 'select';
 const rail = document.getElementById('c') && document.getElementById('rail');
@@ -192,7 +194,7 @@ function draw() {
 
   // real brick footprints, straight from the loader
   for (const b of bricks) {
-    if (b.isKeg || b.isBanner) continue;
+    if (b.isKeg || b.isBanner || b.knight) continue;
     footprint(b, '#b0a894', '#8d846f');
   }
   // kegs as powder barrels
@@ -207,6 +209,17 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 10, y - 4); ctx.lineTo(x, y - 1); ctx.fill();
     ctx.strokeStyle = '#8a7a5c'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x, y - 8); ctx.lineTo(x, y + 4); ctx.stroke();
+  }
+  // knights as little figures, coloured by mortared/loose, with a facing tick
+  for (const el of plan.elements) if (el.type === 'knight') {
+    const x = sx(el.x), y = sy(el.z), r = Math.max(4, 0.24 * view.scale);
+    ctx.fillStyle = el.mortared ? '#5c6470' : '#8a99a8';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#2b323a'; ctx.lineWidth = 1; ctx.stroke();
+    const yaw = el.yaw ?? 0;   // matches plans.mjs: yaw maps local +x to world (cos yaw, -sin yaw)
+    const fx = x + Math.cos(yaw) * (r + 6), fy = y - Math.sin(yaw) * (r + 6);
+    ctx.strokeStyle = '#6b4a2c'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(fx, fy); ctx.stroke();
   }
 
   drawHandles();
@@ -276,7 +289,7 @@ function drawHandles() {
       const cx = sx(el.cx), cz = sy(el.cz);
       if (on) { ctx.strokeStyle = '#2f6fb0'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(cx, cz, 5, 0, 7); ctx.stroke(); }
-    } else if (el.type === 'keg' || el.type === 'magazine' || el.type === 'banner') {
+    } else if (el.type === 'keg' || el.type === 'magazine' || el.type === 'banner' || el.type === 'knight') {
       if (on) {
         const x = el.x ?? bannerXZ(el)[0], z = el.z ?? bannerXZ(el)[1];
         handleDot(sx(x), sy(z), '#2f6fb0', 7);
@@ -319,7 +332,7 @@ function bannerXZ(el) {
 function pick(x, z) {
   // point elements first (easiest to grab)
   for (const el of plan.elements) {
-    if (el.type === 'keg' || el.type === 'magazine') {
+    if (el.type === 'keg' || el.type === 'magazine' || el.type === 'knight') {
       if (Math.hypot(el.x - x, el.z - z) < 0.7) return { el, part:'body' };
     } else if (el.type === 'banner') {
       const [bx, bz] = bannerXZ(el);
@@ -438,6 +451,7 @@ function placeAt(x, z, rawx, rawz) {
     add(el); return;
   }
   if (tool === 'keg') { add({ type:'keg', x, z, y:0.45 }); return; }
+  if (tool === 'knight') { add({ type:'knight', x, z, yaw:0, baseY:0, mortared:false }); return; }
   if (tool === 'magazine') { add({ type:'magazine', x, z, y:0.45, n:4, spread:0.9,
       spec:{ blastR:3.0, power:2.2, crater:1.8, impulse:30000 } }); return; }
   if (tool === 'gate') {
@@ -554,6 +568,12 @@ function syncInspector() {
     insp.append(row('kegs', num(() => g(el,'n',4), v => el.n = Math.max(1, Math.round(v)), 1)));
     insp.append(row('spread', num(() => g(el,'spread',0.9), v => el.spread = v)));
     kegSpec(el);
+  } else if (el.type === 'knight') {
+    insp.append(row('x', num(() => el.x, v => el.x = v)));
+    insp.append(row('z', num(() => el.z, v => el.z = v)));
+    insp.append(row('facing °', num(() => g(el,'yaw',0) * 180 / Math.PI, v => el.yaw = v * Math.PI / 180, 5)));
+    insp.append(row('base y', num(() => g(el,'baseY',0), v => el.baseY = v)));
+    insp.append(row('mortared', bool(() => el.mortared, v => el.mortared = v)));
   } else if (el.type === 'banner') {
     const towers = plan.elements.filter(e => e.type === 'tower' && e.id).map(e => e.id);
     insp.append(row('on tower', choice(['(free)', ...towers], () => el.on ?? '(free)',
@@ -628,6 +648,7 @@ function drawCheck() {
   box.append(line('bricks', s.bricks ?? 0));
   box.append(line('joints', s.joints ?? 0));
   box.append(line('kegs', s.kegs ?? 0));
+  box.append(line('knights', s.knights ?? 0));
   box.append(line('components', s.components ?? 0));
   if (check.ok) { const d = document.createElement('div'); d.className='good'; d.textContent='✓ stands as one piece, banner bonded'; box.append(d); }
   else for (const is of check.issues) { const d = document.createElement('div'); d.className='issue'; d.textContent='• ' + is; box.append(d); }
