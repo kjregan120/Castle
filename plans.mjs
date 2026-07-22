@@ -265,17 +265,48 @@ export function addTree(bricks, x, z, opts = {}) {
   return bricks;
 }
 
-/* ---------- single-box clutter: rocks, crates, hay bales, fence posts -
-   All four are exactly one box apiece, so they share one shape and one
+/* deterministic 0..1 noise (same trick as addKeg's yaw) -- used to scatter
+   clusters without Math.random, so a plan renders identically every time */
+function hash01(a, b, c, d) {
+  const s = Math.sin(a * 12.9898 + b * 37.719 + c * 3.1 + d * 7.7) * 43758.5453;
+  return ((s % 1) + 1) % 1;
+}
+
+/* n points scattered around (x,z) on a golden-angle spiral -- the same
+   "sunflower seed" packing that spreads points out with no clumping, by
+   construction rather than by luck. The spiral is built at the requested
+   spread, then uniformly grown (never shrunk) just enough that its
+   closest pair clears minGap -- so a cluster of tall, top-heavy props
+   (trees) can't spawn with canopies overlapping and shoving each other
+   over on the first physics step. A plain random-angle scatter tried
+   this via rejection sampling, but random attempts routinely failed to
+   find a clear spot once a few points were already down. */
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+function scatterPoints(x, z, n, spread, minGap) {
+  if (n <= 1) return [[x, z]];
+  const offs = [];
+  for (let i = 0; i < n; i++) {
+    const r = spread * Math.sqrt((i + 0.5) / n), t = i * GOLDEN_ANGLE;
+    offs.push([Math.cos(t) * r, Math.sin(t) * r]);
+  }
+  let dmin = Infinity;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++)
+      dmin = Math.min(dmin, Math.hypot(offs[i][0] - offs[j][0], offs[i][1] - offs[j][1]));
+  const k = dmin > 0 ? Math.max(1, minGap / dmin) : 1;
+  return offs.map(([ox, oz]) => [x + ox * k, z + oz * k]);
+}
+
+/* ---------- single-box clutter: rocks, crates, hay bales ---------------
+   All three are exactly one box apiece, so they share one shape and one
    physics treatment in castle.mjs -- a `prop` kind tag makes them behave
    like a keg without the explosive spec: never mortared to anything (a
    standalone body, free-standing), excluded from crater removal (a hit
    sends it flying, not deletes it), lighter than stone. */
 const PROP_SHAPE = {
-  rock:      { h: [0.30, 0.24, 0.27], y: 0.24 },
-  crate:     { h: [0.26, 0.26, 0.26], y: 0.26 },
-  hay:       { h: [0.55, 0.32, 0.42], y: 0.32 },
-  fencepost: { h: [0.06, 0.55, 0.06], y: 0.55 },
+  rock:  { h: [0.30, 0.24, 0.27], y: 0.24 },
+  crate: { h: [0.26, 0.26, 0.26], y: 0.26 },
+  hay:   { h: [0.55, 0.32, 0.42], y: 0.32 },
 };
 export function addProp(bricks, x, z, kind, opts = {}) {
   const { baseY = 0, scale = 1 } = opts;
@@ -289,46 +320,63 @@ export function addProp(bricks, x, z, kind, opts = {}) {
   return bricks;
 }
 
-/* a scattered cluster of one prop kind, e.g. a rockpile or a stack of crates */
+/* a scattered cluster of one prop kind, e.g. a rockpile or a stack of crates.
+   These are squat, so a modest gap keeps them from spawning stacked. */
 export function propCluster(bricks, x, z, kind, n = 5, spread = 1.6, opts = {}) {
-  for (let i = 0; i < n; i++) {
-    const h1 = ((Math.sin(i * 12.9898 + x * 3.1 + z * 7.7) * 43758.5453) % 1 + 1) % 1;
-    const h2 = ((Math.sin(i * 78.233 + x * 5.3 + z * 1.9) * 24634.6345) % 1 + 1) % 1;
-    const t = h1 * Math.PI * 2, r = spread * (0.3 + 0.7 * h2);
-    addProp(bricks, x + Math.cos(t) * r, z + Math.sin(t) * r, kind, opts);
-  }
+  const minGap = 0.6 * (opts.scale ?? 1);
+  for (const [px, pz] of scatterPoints(x, z, n, spread, minGap)) addProp(bricks, px, pz, kind, opts);
   return bricks;
 }
 
-/* a wooden fence: freestanding posts spaced along a path, like a rough
-   palisade line. Each post is its own loose prop -- there is no rail, so
-   a fence never becomes one giant rigid body; a hit only ever knocks over
-   the post it reaches. */
+/* ---------- wooden fence: posts + rails, one connected line ------------
+   Unlike the single-box clutter, a fence needs to look and behave like
+   one continuous structure, so every post and rail along the path shares
+   one `fence` id (see makeMortar/damage/rebuild in castle.mjs): its own
+   pieces always bond to each other -- it stands or comes down as one
+   line -- but the line itself never bonds to the ground or nearby
+   masonry, always loose, like a keg. */
+let _fenceSerial = 0;
 export function addFence(bricks, path, opts = {}) {
-  const { spacing = 1.4, baseY = 0, scale = 1 } = opts;
+  const { spacing = 1.4, baseY = 0, scale = 1, postH = 0.55, railYs = [0.35, 0.75] } = opts;
+  const id = _fenceSerial++;
+  const put = (x, ly, z, hx, hy, hz, yaw, tag) => {
+    bricks.push({
+      p: [x, baseY + ly * scale, z],
+      h: [hx * scale, hy * scale, hz * scale], yaw, course: 0, ring: 0, isBanner: false, tag,
+      fence: { id },
+    });
+  };
+  const posts = [];
   for (let i = 0; i + 1 < path.length; i++) {
     const [ax, az] = path[i], [bx, bz] = path[i + 1];
     const len = Math.hypot(bx - ax, bz - az);
     const n = Math.max(1, Math.round(len / spacing));
     for (let k = (i === 0 ? 0 : 1); k <= n; k++) {
       const t = k / n;
-      addProp(bricks, ax + (bx - ax) * t, az + (bz - az) * t, 'fencepost', { baseY, scale });
+      posts.push([ax + (bx - ax) * t, az + (bz - az) * t]);
     }
+  }
+  for (const [x, z] of posts) put(x, postH, z, 0.05, postH, 0.05, 0, 'fence-post');
+  for (let i = 0; i + 1 < posts.length; i++) {
+    const [ax, az] = posts[i], [bx, bz] = posts[i + 1];
+    const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
+    if (len < 1e-4) continue;
+    const yaw = Math.atan2(-dz, dx), mx = (ax + bx) / 2, mz = (az + bz) / 2;
+    for (const ry of railYs) put(mx, ry, mz, len / 2 * 0.96, 0.035, 0.035, yaw, 'fence-rail');
   }
   return bricks;
 }
 
-/* a forest: a scattered cluster of trees, like magazine() is to addKeg */
+/* a forest: a scattered cluster of trees, like magazine() is to addKeg.
+   The gap is sized off the canopy (up to 1.1m across at its widest tier)
+   so trees don't spawn with foliage overlapping -- that interpenetration
+   was shoving trees over on the very first physics step. */
 export function forest(bricks, x, z, n = 6, spread = 2.5, opts = {}) {
-  for (let i = 0; i < n; i++) {
-    const h1 = ((Math.sin(i * 12.9898 + x * 3.1 + z * 7.7) * 43758.5453) % 1 + 1) % 1;
-    const h2 = ((Math.sin(i * 78.233 + x * 5.3 + z * 1.9) * 24634.6345) % 1 + 1) % 1;
-    const t = h1 * Math.PI * 2;
-    const r = spread * (0.35 + 0.65 * h2);
-    const h3 = ((Math.sin(i * 39.425 + x * 2.3 + z * 4.9) * 12564.877) % 1 + 1) % 1;
-    addTree(bricks, x + Math.cos(t) * r, z + Math.sin(t) * r,
-            { ...opts, scale: (opts.scale ?? 1) * (0.75 + 0.5 * h3) });
-  }
+  const scale0 = opts.scale ?? 1;
+  scatterPoints(x, z, n, spread, 1.5 * scale0).forEach(([px, pz], i) => {
+    const h3 = hash01(i, 0, x, z, 5);
+    addTree(bricks, px, pz, { ...opts, scale: scale0 * (0.75 + 0.5 * h3) });
+  });
   return bricks;
 }
 

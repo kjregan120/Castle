@@ -313,7 +313,8 @@ const MUZZLE = new THREE.Vector3(-28.7, 1.0, 0);
 const stoneMat = new THREE.MeshStandardMaterial({ color:0xb0a894, roughness:0.9, metalness:0.02 });
 const kegMat   = new THREE.MeshStandardMaterial({ color:0x6b3f22, roughness:0.75, emissive:0x160700 });
 const dummy = new THREE.Object3D();
-const PROP_COLOR = { rock:0x8a8f94, crate:0x8a6a3c, hay:0xc9a227, fencepost:0x6b4a2c };
+const PROP_COLOR = { rock:0x8a8f94, crate:0x8a6a3c, hay:0xc9a227 };
+const FENCE_COLOR = { 'fence-post':0x6b4a2c, 'fence-rail':0x8a6a3c };
 
 let jolt, castle, bricks, links, mesh, kegMesh, kegIdx = [], xf;
 let won = false, lost = false, settle = 0;
@@ -358,6 +359,7 @@ function instantiate(bricksIn, cameraDist) {
     else if (b.knight) col.set(b.tag === 'knight-spear' ? 0x6b4a2c : b.tag === 'knight-head' ? 0x9aa2ac : 0x5c6470);
     else if (b.tree) col.set(b.tag === 'tree-trunk' ? 0x6b4a2c : 0x3f7d43);
     else if (b.prop) col.set(PROP_COLOR[b.prop]);
+    else if (b.fence) col.set(FENCE_COLOR[b.tag]);
     else col.setHSL(0.10, 0.13, 0.56 + ((i*2654435761)%1000)/1000*0.16);   // stable per-brick jitter
     mesh.setColorAt(i, col);
   }

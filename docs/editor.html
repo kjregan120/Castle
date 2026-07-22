@@ -145,9 +145,9 @@ const ICON = {
   fence:'<rect x="4" y="6" width="2" height="11" fill="#6b4a2c"/><rect x="9" y="4" width="2" height="13" fill="#6b4a2c"/><rect x="14" y="6" width="2" height="11" fill="#6b4a2c"/><path d="M3 10h15M3 14h15" stroke="#4a3219" stroke-width="1"/>',
 };
 const PROP_COLOR = {
-  rock: ['#8a8f94', '#5f6469'], crate: ['#8a6a3c', '#5c4526'],
-  hay: ['#c9a227', '#967d1c'], fencepost: ['#6b4a2c', '#4a3219'],
+  rock: ['#8a8f94', '#5f6469'], crate: ['#8a6a3c', '#5c4526'], hay: ['#c9a227', '#967d1c'],
 };
+const FENCE_COLOR = { 'fence-post': ['#6b4a2c', '#4a3219'], 'fence-rail': ['#8a6a3c', '#5c4526'] };
 let tool = 'select';
 const rail = document.getElementById('c') && document.getElementById('rail');
 for (const [id, T] of Object.entries(TOOLS)) {
@@ -212,12 +212,14 @@ function draw() {
 
   // real brick footprints, straight from the loader
   for (const b of bricks) {
-    if (b.isKeg || b.isBanner || b.knight || b.tree || b.prop) continue;
+    if (b.isKeg || b.isBanner || b.knight || b.tree || b.prop || b.fence) continue;
     footprint(b, '#b0a894', '#8d846f');
   }
-  // single-box clutter (rocks, crates, hay, fence posts): literally boxes,
-  // so the real footprint is right, just coloured by kind
+  // single-box clutter (rocks, crates, hay): literally boxes, so the real
+  // footprint is right, just coloured by kind
   for (const b of bricks) if (b.prop) footprint(b, ...PROP_COLOR[b.prop]);
+  // fence posts + rails: also real box footprints, coloured by tag
+  for (const b of bricks) if (b.fence) footprint(b, ...FENCE_COLOR[b.tag]);
   // kegs as powder barrels
   for (const b of bricks) if (b.isKeg) {
     ctx.fillStyle = '#a8482f';
@@ -730,6 +732,7 @@ function drawCheck() {
   box.append(line('knights', s.knights ?? 0));
   box.append(line('trees', s.trees ?? 0));
   box.append(line('clutter', s.props ?? 0));
+  box.append(line('fences', s.fences ?? 0));
   box.append(line('components', s.components ?? 0));
   if (check.ok) { const d = document.createElement('div'); d.className='good'; d.textContent='✓ stands as one piece, banner bonded'; box.append(d); }
   else for (const is of check.issues) { const d = document.createElement('div'); d.className='issue'; d.textContent='• ' + is; box.append(d); }

@@ -170,7 +170,7 @@ export function validatePlan(bricks) {
   groups.forEach((g, gi) => { for (const i of g) group[i] = gi; });
 
   const isStone = i => !bricks[i].isKeg && !bricks[i].isBanner && !bricks[i].knight
-                    && !bricks[i].tree && !bricks[i].prop;
+                    && !bricks[i].tree && !bricks[i].prop && !bricks[i].fence;
 
   // the main structure = the largest group that is actual stone
   let main = -1, mainSize = -1;
@@ -201,10 +201,11 @@ export function validatePlan(bricks) {
   const knights = new Set(bricks.filter(b => b.knight).map(b => b.knight.id)).size;
   const trees = new Set(bricks.filter(b => b.tree).map(b => b.tree.id)).size;
   const props = bricks.filter(b => b.prop).length;
+  const fences = new Set(bricks.filter(b => b.fence).map(b => b.fence.id)).size;
   return {
     ok: issues.length === 0,
     issues,
     stats: { bricks: bricks.length, joints: links.length, components: groups.length,
-             kegs, knights, trees, props, mainStone: mainSize },
+             kegs, knights, trees, props, fences, mainStone: mainSize },
   };
 }
