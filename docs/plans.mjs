@@ -231,6 +231,102 @@ export function addKnight(bricks, x, z, opts = {}) {
   return bricks;
 }
 
+/* ---------- trees: blocky scenery, trunk + tiered foliage -------------
+   A tree is a physics prop like the knight, minus the defender behaviour:
+   just a trunk box and a few stacked foliage boxes, tagged so castle.mjs
+   knows to treat them as one unit (see makeMortar/damage/rebuild):
+     - a tree's own pieces ALWAYS bond to each other, so it topples as one
+       trunk-and-crown instead of exploding into loose boxes.
+     - it never bonds to whatever it's standing on -- always loose, like a
+       keg, since trees stand free in a courtyard rather than on a wall.
+     - it's excluded from crater removal (like the banner/knight) so a
+       direct hit knocks it over instead of deleting it.
+   Rotationally symmetric, so unlike the knight there's no facing/yaw. */
+let _treeSerial = 0;
+export function addTree(bricks, x, z, opts = {}) {
+  const { baseY = 0, scale = 1 } = opts;
+  const id = _treeSerial++;
+  const put = (ly, hx, hy, hz, tag) => {
+    bricks.push({
+      p: [x, baseY + ly * scale, z],
+      h: [hx * scale, hy * scale, hz * scale], yaw: 0, course: 0, ring: 0, isBanner: false, tag,
+      tree: { id },
+    });
+  };
+  put(0.6,  0.09, 0.6,  0.09, 'tree-trunk');
+  put(1.35, 0.55, 0.35, 0.55, 'tree-foliage');
+  put(1.85, 0.40, 0.30, 0.40, 'tree-foliage');
+  put(2.25, 0.25, 0.25, 0.25, 'tree-foliage');
+  return bricks;
+}
+
+/* ---------- single-box clutter: rocks, crates, hay bales, fence posts -
+   All four are exactly one box apiece, so they share one shape and one
+   physics treatment in castle.mjs -- a `prop` kind tag makes them behave
+   like a keg without the explosive spec: never mortared to anything (a
+   standalone body, free-standing), excluded from crater removal (a hit
+   sends it flying, not deletes it), lighter than stone. */
+const PROP_SHAPE = {
+  rock:      { h: [0.30, 0.24, 0.27], y: 0.24 },
+  crate:     { h: [0.26, 0.26, 0.26], y: 0.26 },
+  hay:       { h: [0.55, 0.32, 0.42], y: 0.32 },
+  fencepost: { h: [0.06, 0.55, 0.06], y: 0.55 },
+};
+export function addProp(bricks, x, z, kind, opts = {}) {
+  const { baseY = 0, scale = 1 } = opts;
+  const shape = PROP_SHAPE[kind];
+  const yaw = ((Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1 + 1) % 1 * Math.PI * 2;
+  bricks.push({
+    p: [x, baseY + shape.y * scale, z],
+    h: shape.h.map(v => v * scale), yaw, course: 0, ring: 0, isBanner: false,
+    tag: kind, prop: kind,
+  });
+  return bricks;
+}
+
+/* a scattered cluster of one prop kind, e.g. a rockpile or a stack of crates */
+export function propCluster(bricks, x, z, kind, n = 5, spread = 1.6, opts = {}) {
+  for (let i = 0; i < n; i++) {
+    const h1 = ((Math.sin(i * 12.9898 + x * 3.1 + z * 7.7) * 43758.5453) % 1 + 1) % 1;
+    const h2 = ((Math.sin(i * 78.233 + x * 5.3 + z * 1.9) * 24634.6345) % 1 + 1) % 1;
+    const t = h1 * Math.PI * 2, r = spread * (0.3 + 0.7 * h2);
+    addProp(bricks, x + Math.cos(t) * r, z + Math.sin(t) * r, kind, opts);
+  }
+  return bricks;
+}
+
+/* a wooden fence: freestanding posts spaced along a path, like a rough
+   palisade line. Each post is its own loose prop -- there is no rail, so
+   a fence never becomes one giant rigid body; a hit only ever knocks over
+   the post it reaches. */
+export function addFence(bricks, path, opts = {}) {
+  const { spacing = 1.4, baseY = 0, scale = 1 } = opts;
+  for (let i = 0; i + 1 < path.length; i++) {
+    const [ax, az] = path[i], [bx, bz] = path[i + 1];
+    const len = Math.hypot(bx - ax, bz - az);
+    const n = Math.max(1, Math.round(len / spacing));
+    for (let k = (i === 0 ? 0 : 1); k <= n; k++) {
+      const t = k / n;
+      addProp(bricks, ax + (bx - ax) * t, az + (bz - az) * t, 'fencepost', { baseY, scale });
+    }
+  }
+  return bricks;
+}
+
+/* a forest: a scattered cluster of trees, like magazine() is to addKeg */
+export function forest(bricks, x, z, n = 6, spread = 2.5, opts = {}) {
+  for (let i = 0; i < n; i++) {
+    const h1 = ((Math.sin(i * 12.9898 + x * 3.1 + z * 7.7) * 43758.5453) % 1 + 1) % 1;
+    const h2 = ((Math.sin(i * 78.233 + x * 5.3 + z * 1.9) * 24634.6345) % 1 + 1) % 1;
+    const t = h1 * Math.PI * 2;
+    const r = spread * (0.35 + 0.65 * h2);
+    const h3 = ((Math.sin(i * 39.425 + x * 2.3 + z * 4.9) * 12564.877) % 1 + 1) % 1;
+    addTree(bricks, x + Math.cos(t) * r, z + Math.sin(t) * r,
+            { ...opts, scale: (opts.scale ?? 1) * (0.75 + 0.5 * h3) });
+  }
+  return bricks;
+}
+
 /* =====================================================================
    THE PLANS
    Each returns a brick array ready for makeMortar(). `blurb` is for the HUD.

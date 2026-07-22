@@ -119,6 +119,13 @@ const TOOLS = {
   magazine: { key:'M', tip:'click to place a magazine (a cluster of kegs)' },
   banner:   { key:'B', tip:'click a tower to plant the banner on it · or click open ground' },
   knight:   { key:'N', tip:'click to place a knight · set mortared + facing on the right' },
+  tree:     { key:'R', tip:'click to place a tree' },
+  forest:   { key:'F', tip:'click to place a scattered cluster of trees' },
+  rock:     { key:'O', tip:'click to place a rock' },
+  crate:    { key:'C', tip:'click to place a crate' },
+  hay:      { key:'H', tip:'click to place a hay bale' },
+  clutter:  { key:'L', tip:'click to place a scattered pile · pick rock/crate/hay on the right' },
+  fence:    { key:'E', tip:'click to add fence posts · Enter or double-click to finish · Esc to cancel' },
 };
 const ICON = {
   select:'<path d="M4 3l7 16 2-6 6-2z" fill="#1c2530"/>',
@@ -129,6 +136,17 @@ const ICON = {
   magazine:'<circle cx="7" cy="8" r="3.2" fill="#a8482f"/><circle cx="13" cy="9" r="3.2" fill="#a8482f"/><circle cx="10" cy="13" r="3.2" fill="#a8482f"/>',
   banner:'<path d="M6 3v15" stroke="#8a7a5c" stroke-width="1.4"/><path d="M6 4h9l-2 3 2 3H6z" fill="#b3402f"/>',
   knight:'<circle cx="10" cy="6" r="2.4" fill="#9aa2ac"/><path d="M10 8.5v6" stroke="#5c6470" stroke-width="2"/><path d="M6.5 11h7" stroke="#5c6470" stroke-width="1.6"/><path d="M10 14.5l-3 4M10 14.5l3 4" stroke="#5c6470" stroke-width="1.6"/><path d="M13 9l4-2" stroke="#6b4a2c" stroke-width="1.4"/>',
+  tree:'<rect x="9" y="12" width="2" height="6" fill="#6b4a2c"/><path d="M10 2l5 8H5z" fill="#3f7d43"/><path d="M10 6l4 7H6z" fill="#4d8f52"/>',
+  forest:'<rect x="6.3" y="13" width="1.4" height="4" fill="#6b4a2c"/><path d="M7 5l3.5 9h-7z" fill="#3f7d43"/><rect x="13.3" y="11" width="1.4" height="4" fill="#6b4a2c"/><path d="M14 4l3.5 8h-7z" fill="#4d8f52"/>',
+  rock:'<path d="M4 15l2-6 3-2 4 1 3 4-1 4z" fill="#8a8f94" stroke="#5f6469" stroke-width=".6"/>',
+  crate:'<rect x="4" y="5" width="12" height="11" fill="#8a6a3c" stroke="#5c4526"/><path d="M4 5l12 11M16 5L4 16" stroke="#5c4526" stroke-width=".6"/>',
+  hay:'<ellipse cx="10" cy="11" rx="7" ry="5" fill="#c9a227" stroke="#967d1c"/><path d="M4 11h12M5 8h10M5 14h10" stroke="#967d1c" stroke-width=".6"/>',
+  clutter:'<circle cx="7" cy="9" r="3" fill="#8a8f94"/><circle cx="13" cy="10" r="3" fill="#8a6a3c"/><circle cx="10" cy="14" r="3" fill="#c9a227"/>',
+  fence:'<rect x="4" y="6" width="2" height="11" fill="#6b4a2c"/><rect x="9" y="4" width="2" height="13" fill="#6b4a2c"/><rect x="14" y="6" width="2" height="11" fill="#6b4a2c"/><path d="M3 10h15M3 14h15" stroke="#4a3219" stroke-width="1"/>',
+};
+const PROP_COLOR = {
+  rock: ['#8a8f94', '#5f6469'], crate: ['#8a6a3c', '#5c4526'],
+  hay: ['#c9a227', '#967d1c'], fencepost: ['#6b4a2c', '#4a3219'],
 };
 let tool = 'select';
 const rail = document.getElementById('c') && document.getElementById('rail');
@@ -194,9 +212,12 @@ function draw() {
 
   // real brick footprints, straight from the loader
   for (const b of bricks) {
-    if (b.isKeg || b.isBanner || b.knight) continue;
+    if (b.isKeg || b.isBanner || b.knight || b.tree || b.prop) continue;
     footprint(b, '#b0a894', '#8d846f');
   }
+  // single-box clutter (rocks, crates, hay, fence posts): literally boxes,
+  // so the real footprint is right, just coloured by kind
+  for (const b of bricks) if (b.prop) footprint(b, ...PROP_COLOR[b.prop]);
   // kegs as powder barrels
   for (const b of bricks) if (b.isKeg) {
     ctx.fillStyle = '#a8482f';
@@ -220,6 +241,18 @@ function draw() {
     const fx = x + Math.cos(yaw) * (r + 6), fy = y - Math.sin(yaw) * (r + 6);
     ctx.strokeStyle = '#6b4a2c'; ctx.lineWidth = 1.6;
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(fx, fy); ctx.stroke();
+  }
+  // trees as little canopies, straight from the built bricks -- this covers
+  // both single 'tree' elements and every tree a 'forest' element scatters
+  for (const b of bricks) if (b.tag === 'tree-trunk') {
+    const scale = b.h[0] / 0.09;
+    const x = sx(b.p[0]), y = sy(b.p[2]);
+    const r = Math.max(3, 0.5 * scale * view.scale);
+    ctx.fillStyle = '#3f7d43';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#2b4a2c'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#6b4a2c';
+    ctx.beginPath(); ctx.arc(x, y, Math.max(1.5, r * 0.22), 0, 7); ctx.fill();
   }
 
   drawHandles();
@@ -276,9 +309,10 @@ function drawGun() {
 function drawHandles() {
   for (const el of plan.elements) {
     const on = el === sel;
-    if (el.type === 'wall') {
+    if (el.type === 'wall' || el.type === 'fence') {
       const p = el.path;
-      ctx.strokeStyle = on ? '#2f6fb0' : '#7d95aa';
+      const dash = el.type === 'fence' ? '#a3855c' : '#7d95aa';
+      ctx.strokeStyle = on ? '#2f6fb0' : dash;
       ctx.lineWidth = on ? 2 : 1; ctx.setLineDash(on ? [] : [3, 3]);
       ctx.beginPath();
       p.forEach((v, i) => i ? ctx.lineTo(sx(v[0]), sy(v[1])) : ctx.moveTo(sx(v[0]), sy(v[1])));
@@ -289,7 +323,9 @@ function drawHandles() {
       const cx = sx(el.cx), cz = sy(el.cz);
       if (on) { ctx.strokeStyle = '#2f6fb0'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(cx, cz, 5, 0, 7); ctx.stroke(); }
-    } else if (el.type === 'keg' || el.type === 'magazine' || el.type === 'banner' || el.type === 'knight') {
+    } else if (el.type === 'keg' || el.type === 'magazine' || el.type === 'banner'
+            || el.type === 'knight' || el.type === 'tree' || el.type === 'forest'
+            || el.type === 'rock' || el.type === 'crate' || el.type === 'hay' || el.type === 'clutter') {
       if (on) {
         const x = el.x ?? bannerXZ(el)[0], z = el.z ?? bannerXZ(el)[1];
         handleDot(sx(x), sy(z), '#2f6fb0', 7);
@@ -332,15 +368,20 @@ function bannerXZ(el) {
 function pick(x, z) {
   // point elements first (easiest to grab)
   for (const el of plan.elements) {
-    if (el.type === 'keg' || el.type === 'magazine' || el.type === 'knight') {
+    if (el.type === 'keg' || el.type === 'magazine' || el.type === 'knight' || el.type === 'tree'
+     || el.type === 'rock' || el.type === 'crate' || el.type === 'hay') {
       if (Math.hypot(el.x - x, el.z - z) < 0.7) return { el, part:'body' };
+    } else if (el.type === 'forest') {
+      if (Math.hypot(el.x - x, el.z - z) < (el.spread ?? 2.5) + 0.5) return { el, part:'body' };
+    } else if (el.type === 'clutter') {
+      if (Math.hypot(el.x - x, el.z - z) < (el.spread ?? 1.6) + 0.5) return { el, part:'body' };
     } else if (el.type === 'banner') {
       const [bx, bz] = bannerXZ(el);
       if (Math.hypot(bx - x, bz - z) < 0.8) return { el, part:'body' };
     }
   }
-  // wall vertices, then tower centres, then bodies
-  for (const el of plan.elements) if (el.type === 'wall') {
+  // wall/fence vertices, then tower centres, then bodies
+  for (const el of plan.elements) if (el.type === 'wall' || el.type === 'fence') {
     for (let i = 0; i < el.path.length; i++)
       if (Math.hypot(el.path[i][0] - x, el.path[i][1] - z) < 0.6) return { el, part:{ type:'vertex', i } };
   }
@@ -348,7 +389,7 @@ function pick(x, z) {
     const half = el.shape === 'ngon' ? (el.r ?? 3) : (el.side ?? 5) / 2;
     if (Math.abs(el.cx - x) < half && Math.abs(el.cz - z) < half) return { el, part:'body' };
   }
-  for (const el of plan.elements) if (el.type === 'wall') {
+  for (const el of plan.elements) if (el.type === 'wall' || el.type === 'fence') {
     for (let i = 0; i + 1 < el.path.length + (el.closed ? 1 : 0); i++) {
       const a = el.path[i], b = el.path[(i + 1) % el.path.length];
       if (segDist(x, z, a[0], a[1], b[0], b[1]) < (el.thickness ?? 1) / 2 + 0.3) return { el, part:'body' };
@@ -396,7 +437,7 @@ cv.addEventListener('pointerdown', e => {
     else { select(null); panning = { ox:view.ox, oz:view.oz, sx:e.offsetX, sy:e.offsetY }; }
     return;
   }
-  if (tool === 'wall') {
+  if (tool === 'wall' || tool === 'fence') {
     if (!wallDraft) wallDraft = [];
     wallDraft.push([x, z]);
     draw(); return;
@@ -422,7 +463,7 @@ cv.addEventListener('pointerup', e => {
   if (!movedFar) placeAt(x, z, wx(e.offsetX), wz(e.offsetY));
   downPt = null;
 });
-cv.addEventListener('dblclick', () => { if (tool === 'wall') finishWall(); });
+cv.addEventListener('dblclick', () => { if (tool === 'wall' || tool === 'fence') finishWall(); });
 cv.addEventListener('wheel', e => {
   e.preventDefault();
   const mx = wx(e.offsetX), mz = wz(e.offsetY);
@@ -434,7 +475,7 @@ cv.addEventListener('wheel', e => {
 
 function moveBy(d, x, z) {
   const el = d.el, dx = x - d.x, dz = z - d.z;
-  if (el.type === 'wall') {
+  if (el.type === 'wall' || el.type === 'fence') {
     if (d.part && d.part.type === 'vertex') { el.path[d.part.i] = [x, z]; }
     else { el.path = el.path.map(v => [v[0] + dx, v[1] + dz]); (el.openings||[]).forEach(o => { o.x += dx; o.z += dz; }); }
   } else if (el.type === 'tower') {
@@ -454,6 +495,12 @@ function placeAt(x, z, rawx, rawz) {
   if (tool === 'knight') { add({ type:'knight', x, z, yaw:0, baseY:0, mortared:false }); return; }
   if (tool === 'magazine') { add({ type:'magazine', x, z, y:0.45, n:4, spread:0.9,
       spec:{ blastR:3.0, power:2.2, crater:1.8, impulse:30000 } }); return; }
+  if (tool === 'tree') { add({ type:'tree', x, z, baseY:0, scale:1 }); return; }
+  if (tool === 'forest') { add({ type:'forest', x, z, n:6, spread:2.5, baseY:0, scale:1 }); return; }
+  if (tool === 'rock' || tool === 'crate' || tool === 'hay') {
+    add({ type:tool, x, z, baseY:0, scale:1 }); return;
+  }
+  if (tool === 'clutter') { add({ type:'clutter', x, z, kind:'rock', n:5, spread:1.6, baseY:0, scale:1 }); return; }
   if (tool === 'gate') {
     const w = nearestWall(rawx, rawz);
     if (!w) { flashHint('click closer to a wall to cut a gate'); return; }
@@ -480,14 +527,16 @@ function dropBanners() { plan.elements = plan.elements.filter(e => e.type !== 'b
 
 function finishWall() {
   if (!wallDraft || wallDraft.length < 2) { wallDraft = null; draw(); return; }
-  const el = { type:'wall', path:wallDraft.slice(), closed:false, crenels:true, openings:[] };
+  const el = tool === 'fence'
+    ? { type:'fence', path:wallDraft.slice(), spacing:1.4, baseY:0, scale:1 }
+    : { type:'wall', path:wallDraft.slice(), closed:false, crenels:true, openings:[] };
   wallDraft = null;
   add(el); setTool('select');
 }
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (e.target.matches('input,select,textarea')) return;
-  if (e.key === 'Enter' && tool === 'wall') return finishWall();
+  if (e.key === 'Enter' && (tool === 'wall' || tool === 'fence')) return finishWall();
   if (e.key === 'Escape') { wallDraft = null; draw(); return; }
   if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { removeSel(); return; }
   for (const [id, T] of Object.entries(TOOLS)) if (T.key.toLowerCase() === k) return setTool(id);
@@ -574,6 +623,36 @@ function syncInspector() {
     insp.append(row('facing °', num(() => g(el,'yaw',0) * 180 / Math.PI, v => el.yaw = v * Math.PI / 180, 5)));
     insp.append(row('base y', num(() => g(el,'baseY',0), v => el.baseY = v)));
     insp.append(row('mortared', bool(() => el.mortared, v => el.mortared = v)));
+  } else if (el.type === 'tree') {
+    insp.append(row('x', num(() => el.x, v => el.x = v)));
+    insp.append(row('z', num(() => el.z, v => el.z = v)));
+    insp.append(row('base y', num(() => g(el,'baseY',0), v => el.baseY = v)));
+    insp.append(row('scale', num(() => g(el,'scale',1), v => el.scale = Math.max(0.1, v))));
+  } else if (el.type === 'forest') {
+    insp.append(row('x', num(() => el.x, v => el.x = v)));
+    insp.append(row('z', num(() => el.z, v => el.z = v)));
+    insp.append(row('trees', num(() => g(el,'n',6), v => el.n = Math.max(1, Math.round(v)), 1)));
+    insp.append(row('spread', num(() => g(el,'spread',2.5), v => el.spread = v)));
+    insp.append(row('base y', num(() => g(el,'baseY',0), v => el.baseY = v)));
+    insp.append(row('scale', num(() => g(el,'scale',1), v => el.scale = Math.max(0.1, v))));
+  } else if (el.type === 'rock' || el.type === 'crate' || el.type === 'hay') {
+    insp.append(row('x', num(() => el.x, v => el.x = v)));
+    insp.append(row('z', num(() => el.z, v => el.z = v)));
+    insp.append(row('base y', num(() => g(el,'baseY',0), v => el.baseY = v)));
+    insp.append(row('scale', num(() => g(el,'scale',1), v => el.scale = Math.max(0.1, v))));
+  } else if (el.type === 'clutter') {
+    insp.append(row('x', num(() => el.x, v => el.x = v)));
+    insp.append(row('z', num(() => el.z, v => el.z = v)));
+    insp.append(row('kind', choice(['rock','crate','hay'], () => g(el,'kind','rock'), v => el.kind = v)));
+    insp.append(row('count', num(() => g(el,'n',5), v => el.n = Math.max(1, Math.round(v)), 1)));
+    insp.append(row('spread', num(() => g(el,'spread',1.6), v => el.spread = v)));
+    insp.append(row('base y', num(() => g(el,'baseY',0), v => el.baseY = v)));
+    insp.append(row('scale', num(() => g(el,'scale',1), v => el.scale = Math.max(0.1, v))));
+  } else if (el.type === 'fence') {
+    insp.append(row('corners', span(el.path.length + ' (drag on canvas)')));
+    insp.append(row('spacing', num(() => g(el,'spacing',1.4), v => el.spacing = Math.max(0.3, v))));
+    insp.append(row('base y', num(() => g(el,'baseY',0), v => el.baseY = v)));
+    insp.append(row('scale', num(() => g(el,'scale',1), v => el.scale = Math.max(0.1, v))));
   } else if (el.type === 'banner') {
     const towers = plan.elements.filter(e => e.type === 'tower' && e.id).map(e => e.id);
     insp.append(row('on tower', choice(['(free)', ...towers], () => el.on ?? '(free)',
@@ -649,6 +728,8 @@ function drawCheck() {
   box.append(line('joints', s.joints ?? 0));
   box.append(line('kegs', s.kegs ?? 0));
   box.append(line('knights', s.knights ?? 0));
+  box.append(line('trees', s.trees ?? 0));
+  box.append(line('clutter', s.props ?? 0));
   box.append(line('components', s.components ?? 0));
   if (check.ok) { const d = document.createElement('div'); d.className='good'; d.textContent='✓ stands as one piece, banner bonded'; box.append(d); }
   else for (const is of check.issues) { const d = document.createElement('div'); d.className='issue'; d.textContent='• ' + is; box.append(d); }

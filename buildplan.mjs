@@ -27,12 +27,18 @@
      magazine { x, y?, z?, n?, spread?, spec? }
      banner   { on?:<element id> }  OR  { x, y, z }
      knight   { x, z, yaw?, baseY?, mortared? }
+     tree     { x, z, baseY?, scale? }
+     forest   { x, z, n?, spread?, baseY?, scale? }
+     rock | crate | hay   { x, z, baseY?, scale? }
+     clutter  { x, z, kind?:"rock"|"crate"|"hay", n?, spread?, baseY?, scale? }
+     fence    { path:[[x,z],...], spacing?, baseY?, scale? }
 
    An `openings` entry is { x, z, w, from, to }: courses from..to are skipped
    within w/2 metres of (x,z) -- a gate, or a window.
 ------------------------------------------------------------------- */
 
-import { layPath, square, ngon, addKeg, magazine, plantBanner, addKnight } from './plans.mjs';
+import { layPath, square, ngon, addKeg, magazine, plantBanner, addKnight, addTree, forest,
+         addProp, propCluster, addFence } from './plans.mjs';
 import { makeMortar, components } from './castle.mjs';
 
 /* the defaults a wall/tower falls back to, matching plans.mjs's house style */
@@ -113,6 +119,23 @@ export function buildPlan(plan) {
           yaw: el.yaw ?? 0, baseY: el.baseY ?? 0, mortared: !!el.mortared,
         });
         break;
+      case 'tree':
+        addTree(bricks, el.x, el.z ?? 0, { baseY: el.baseY ?? 0, scale: el.scale ?? 1 });
+        break;
+      case 'forest':
+        forest(bricks, el.x, el.z ?? 0, el.n ?? 6, el.spread ?? 2.5,
+               { baseY: el.baseY ?? 0, scale: el.scale ?? 1 });
+        break;
+      case 'rock': case 'crate': case 'hay':
+        addProp(bricks, el.x, el.z ?? 0, el.type, { baseY: el.baseY ?? 0, scale: el.scale ?? 1 });
+        break;
+      case 'clutter':
+        propCluster(bricks, el.x, el.z ?? 0, el.kind ?? 'rock', el.n ?? 5, el.spread ?? 1.6,
+                    { baseY: el.baseY ?? 0, scale: el.scale ?? 1 });
+        break;
+      case 'fence':
+        addFence(bricks, el.path, { spacing: el.spacing ?? 1.4, baseY: el.baseY ?? 0, scale: el.scale ?? 1 });
+        break;
       case 'banner': {
         if (el.on != null) {
           const ref = byId.get(el.on);
@@ -146,7 +169,8 @@ export function validatePlan(bricks) {
   const group = new Int32Array(bricks.length).fill(-1);
   groups.forEach((g, gi) => { for (const i of g) group[i] = gi; });
 
-  const isStone = i => !bricks[i].isKeg && !bricks[i].isBanner && !bricks[i].knight;
+  const isStone = i => !bricks[i].isKeg && !bricks[i].isBanner && !bricks[i].knight
+                    && !bricks[i].tree && !bricks[i].prop;
 
   // the main structure = the largest group that is actual stone
   let main = -1, mainSize = -1;
@@ -175,10 +199,12 @@ export function validatePlan(bricks) {
 
   const kegs = bricks.filter(b => b.isKeg).length;
   const knights = new Set(bricks.filter(b => b.knight).map(b => b.knight.id)).size;
+  const trees = new Set(bricks.filter(b => b.tree).map(b => b.tree.id)).size;
+  const props = bricks.filter(b => b.prop).length;
   return {
     ok: issues.length === 0,
     issues,
     stats: { bricks: bricks.length, joints: links.length, components: groups.length,
-             kegs, knights, mainStone: mainSize },
+             kegs, knights, trees, props, mainStone: mainSize },
   };
 }

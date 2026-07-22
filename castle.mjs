@@ -75,6 +75,9 @@ export function makeTower(P = {}) {
   return bricks;
 }
 
+/* mass (kg) of one single-box clutter prop, by kind -- see rebuild() */
+const PROP_MASS = { rock: 150, crate: 40, hay: 25, fencepost: 15 };
+
 /* ---------- 2. MORTAR GRAPH --------------------------------------------
    A link wherever two bricks touch. This is the fracture graph; it is also
    exactly the array that decides the win condition later.
@@ -115,7 +118,9 @@ export function makeMortar(bricks, tol = 0.09) {
         // a powder keg is a loose barrel standing on a floor, not masonry.
         // Never mortar it in: it must be its own component so it can be
         // knocked over, buried, and crushed by the rubble it is under.
-        if (b.isKeg || o.isKeg) continue;
+        // Single-box clutter (rocks, crates, hay, fence posts) is the same
+        // deal -- every `prop` stands entirely on its own.
+        if (b.isKeg || o.isKeg || b.prop || o.prop) continue;
         // a knight's OWN pieces always bond to each other (so it topples as
         // one figure, never explodes into loose boxes); whether it bonds to
         // whatever it's standing on is the `mortared` flag on the prop --
@@ -125,6 +130,13 @@ export function makeMortar(bricks, tol = 0.09) {
           if (!sameKnight) {
             if ((b.knight && !b.knight.mortared) || (o.knight && !o.knight.mortared)) continue;
           }
+        }
+        // a tree's own pieces always bond to each other (trunk + foliage
+        // topple as one), but it never bonds to the structure it stands
+        // near -- always loose, like a keg.
+        if (b.tree || o.tree) {
+          const sameTree = b.tree && o.tree && b.tree.id === o.tree.id;
+          if (!sameTree) continue;
         }
         const d = Math.hypot(o.p[0] - b.p[0], o.p[1] - b.p[1], o.p[2] - b.p[2]);
         if (d > radius(i) + radius(j) + tol) continue;
@@ -358,8 +370,11 @@ export class Castle {
         J.EMotionType_Dynamic, LAYER_MOVING);
       cfg.mOverrideMassProperties = J.EOverrideMassProperties_CalculateInertia;
       let mass = 0;
-      for (const i of g)
-        mass += this.bricks[i].isKeg ? 90 : this.bricks[i].knight ? 20 : 400;   // stone vs barrel vs a person
+      for (const i of g) {
+        const b = this.bricks[i];
+        mass += b.isKeg ? 90 : b.knight ? 20 : b.tree ? 15
+              : b.prop ? (PROP_MASS[b.prop] ?? 40) : 400;   // stone vs barrel vs a person vs a tree vs clutter
+      }
       cfg.mMassPropertiesOverride.mMass = mass;
       cfg.mFriction = 0.75;
       cfg.mRestitution = 0.02;
@@ -419,11 +434,12 @@ export class Castle {
       if (d < radius) { this.fused.add(i); this.kegQueue.push(i); }
     }
 
-    // 1. the crater: stone inside it is GONE. A knight is excluded for the
-    //    same reason the banner is -- a direct hit should send it flying,
-    //    not just delete it.
+    // 1. the crater: stone inside it is GONE. A knight, tree or clutter prop
+    //    is excluded for the same reason the banner is -- a direct hit
+    //    should send it flying, not just delete it.
     for (let i = 0; i < this.bricks.length; i++) {
-      if (!this.alive[i] || this.bricks[i].isBanner || this.bricks[i].isKeg || this.bricks[i].knight) continue;
+      if (!this.alive[i] || this.bricks[i].isBanner || this.bricks[i].isKeg
+          || this.bricks[i].knight || this.bricks[i].tree || this.bricks[i].prop) continue;
       const d = Math.hypot(W[i*7] - px, W[i*7+1] - py, W[i*7+2] - pz);
       if (d < craterR) { this.alive[i] = 0; gone++; this.destroyedBricks++; }
     }
