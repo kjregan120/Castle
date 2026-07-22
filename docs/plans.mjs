@@ -253,7 +253,12 @@ export function addTree(bricks, x, z, opts = {}) {
       tree: { id },
     });
   };
-  put(0.6,  0.09, 0.6,  0.09, 'tree-trunk');
+  // the trunk is what actually touches the ground -- everything above it
+  // (up to 1.1m of canopy) rides on however wide THIS footprint is. The
+  // original 0.18x0.18 base was too slender for a 2.5m top-heavy tree (a
+  // ~14:1 height-to-base ratio) and tipped over on its own; a knight, by
+  // comparison, stands on a base closer to 5:1.
+  put(0.6,  0.22, 0.6,  0.22, 'tree-trunk');
   put(1.35, 0.55, 0.35, 0.55, 'tree-foliage');
   put(1.85, 0.40, 0.30, 0.40, 'tree-foliage');
   put(2.25, 0.25, 0.25, 0.25, 'tree-foliage');
