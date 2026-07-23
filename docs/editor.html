@@ -26,7 +26,8 @@
 
   /* left tool rail */
   .rail{background:var(--panel);border-right:1px solid var(--line);padding:8px 6px;
-    display:flex;flex-direction:column;gap:6px;align-items:center}
+    display:flex;flex-direction:column;gap:6px;align-items:center;
+    overflow-y:auto;overscroll-behavior:contain}
   .tool{width:44px;height:44px;border:1px solid var(--line);border-radius:6px;background:var(--field);
     cursor:pointer;display:grid;place-items:center;position:relative}
   .tool:hover{border-color:var(--accent)}
@@ -56,6 +57,7 @@
 
   /* right inspector */
   .side{background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:12px}
+  .filerow{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
   .cap{color:#8a99a8;letter-spacing:.12em;font-size:11px;margin:14px 0 6px}
   .cap:first-child{margin-top:0}
   .fld{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0}
@@ -92,9 +94,6 @@
     <input class="name" id="name" value="my castle" spellcheck="false">
     <span class="sp"></span>
     <button class="act" id="new">new</button>
-    <button class="act" id="open">open&hellip;</button>
-    <button class="act" id="copy">copy json</button>
-    <button class="act" id="download">download</button>
     <button class="act go" id="toviewer">open in viewer &rarr;</button>
     <input id="file" type="file" accept="application/json,.json" hidden>
   </div>
@@ -111,6 +110,11 @@
   </div>
 
   <div class="side" id="side">
+    <div class="filerow">
+      <button class="act" id="open">open&hellip;</button>
+      <button class="act" id="copy">copy json</button>
+      <button class="act" id="download">download</button>
+    </div>
     <div class="cap">PLAN DEFAULTS</div>
     <div id="defaults"></div>
     <div class="cap">SELECTED</div>
@@ -119,7 +123,7 @@
     <div id="check"></div>
   </div>
 </div>
-<button class="sidetoggle" id="sidetoggle" title="Properties" aria-label="Toggle properties panel">&#9776;</button>
+<button class="sidetoggle" id="sidetoggle" title="Menu" aria-label="Toggle menu">&#9776;</button>
 
 <script type="module">
 import { buildPlan, validatePlan } from './buildplan.mjs';
@@ -202,7 +206,10 @@ function updateWallTools() {
   document.getElementById('walltools').classList.toggle('show', !!(wallDraft && wallDraft.length));
 }
 document.getElementById('sidetoggle').onclick = () => document.getElementById('side').classList.toggle('open');
-document.getElementById('wallFinish').onclick = () => finishWall();
+document.getElementById('wallFinish').onclick = () => {
+  if (!wallDraft || wallDraft.length < 2) { flashHint('drag out at least two points first'); return; }
+  finishWall();
+};
 document.getElementById('wallCancel').onclick = () => { wallDraft = null; draw(); };
 
 /* ============ canvas + world<->screen =============================== */
@@ -542,6 +549,14 @@ cv.addEventListener('pointerup', e => {
 
   if (panning) { panning = null; downPt = null; return; }
   if (dragging) { dragging = null; downPt = null; recompute(); syncInspector(); return; }
+
+  /* a drag (not just a tap) while drawing a wall/fence lays down the release
+     point as a second corner -- lets one drag produce a finished 2-point wall,
+     which is the natural touch gesture (tap-tap-tap-Finish is the fallback). */
+  if ((tool === 'wall' || tool === 'fence') && wallDraft && movedFar) {
+    wallDraft.push([snap(wx(e.offsetX)), snap(wz(e.offsetY))]);
+    draw(); downPt = null; return;
+  }
 
   const x = snap(wx(e.offsetX)), z = snap(wz(e.offsetY));
   if (!movedFar) placeAt(x, z, wx(e.offsetX), wz(e.offsetY));
