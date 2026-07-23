@@ -759,7 +759,7 @@ document.getElementById('copy').onclick = async () => {
 document.getElementById('toviewer').onclick = () => {
   try { localStorage.setItem('siege.pendingPlan', JSON.stringify(cleanPlan())); }
   catch (e) { flashHint('hand-off blocked: ' + e.message); return; }
-  window.open('index.html', '_blank');
+  window.open('viewer.html', '_blank');
 };
 const fileEl = document.getElementById('file');
 document.getElementById('open').onclick = () => fileEl.click();
