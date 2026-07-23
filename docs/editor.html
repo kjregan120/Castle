@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>siege · plan editor</title>
 <style>
   :root{
@@ -11,26 +12,26 @@
   html,body{margin:0;height:100%;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
     color:var(--ink);background:#e7eef4;overflow:hidden}
   button,input,select{font:inherit;color:var(--ink)}
-  .app{display:grid;grid-template-columns:52px 1fr 260px;grid-template-rows:46px 1fr;height:100%}
+  .app{display:grid;grid-template-columns:58px 1fr 260px;grid-template-rows:46px 1fr;height:100%}
 
   /* top bar spans all columns */
-  .bar{grid-column:1/4;display:flex;align-items:center;gap:10px;padding:0 12px;
+  .bar{grid-column:1/4;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:6px 12px;
     background:var(--panel);border-bottom:1px solid var(--line)}
   .bar b{letter-spacing:.14em}
   .bar .sp{flex:1}
   .bar input.name{width:190px;padding:5px 8px;border:1px solid var(--line);border-radius:4px;background:var(--field)}
-  .act{padding:6px 11px;border:1px solid var(--line);border-radius:4px;background:var(--field);cursor:pointer}
+  .act{padding:9px 14px;border:1px solid var(--line);border-radius:4px;background:var(--field);cursor:pointer}
   .act:hover{border-color:var(--accent)}
   .act.go{background:var(--accent);border-color:var(--accent);color:#fff}
 
   /* left tool rail */
   .rail{background:var(--panel);border-right:1px solid var(--line);padding:8px 6px;
     display:flex;flex-direction:column;gap:6px;align-items:center}
-  .tool{width:38px;height:38px;border:1px solid var(--line);border-radius:6px;background:var(--field);
+  .tool{width:44px;height:44px;border:1px solid var(--line);border-radius:6px;background:var(--field);
     cursor:pointer;display:grid;place-items:center;position:relative}
   .tool:hover{border-color:var(--accent)}
   .tool.on{background:var(--accent-bg);border-color:var(--accent)}
-  .tool svg{width:20px;height:20px}
+  .tool svg{width:22px;height:22px}
   .tool .k{position:absolute;bottom:1px;right:3px;font-size:9px;color:var(--ink2)}
 
   /* canvas */
@@ -39,19 +40,33 @@
   .hint{position:absolute;left:12px;bottom:10px;color:var(--ink2);
     background:#ffffffcc;border:1px solid var(--line2);border-radius:5px;padding:5px 9px}
 
+  /* floating wall/fence finish controls, shown while a draft is in progress */
+  .walltools{position:absolute;left:50%;bottom:56px;transform:translateX(-50%);
+    display:none;gap:8px;z-index:15}
+  .walltools.show{display:flex}
+  .walltools button{padding:10px 16px;border-radius:8px;border:1px solid var(--line);
+    background:#ffffffee;font-size:14px;cursor:pointer;box-shadow:0 4px 14px #0003}
+  #wallFinish{color:var(--ok);border-color:#b6d3b6}
+  #wallCancel{color:var(--powder);border-color:#e0b6ab}
+
+  /* floating properties-panel toggle, phone widths only (see @media below) */
+  .sidetoggle{display:none;position:fixed;left:16px;bottom:16px;z-index:30;
+    width:48px;height:48px;border-radius:50%;border:1px solid var(--line);
+    background:var(--accent);color:#fff;font-size:19px;box-shadow:0 4px 14px #0004;cursor:pointer}
+
   /* right inspector */
   .side{background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:12px}
   .cap{color:#8a99a8;letter-spacing:.12em;font-size:11px;margin:14px 0 6px}
   .cap:first-child{margin-top:0}
   .fld{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0}
   .fld label{color:var(--ink2)}
-  .fld input[type=number],.fld input[type=text],.fld select{width:104px;padding:3px 6px;
+  .fld input[type=number],.fld input[type=text],.fld select{width:104px;padding:7px 8px;
     border:1px solid var(--line);border-radius:4px;background:var(--field);text-align:right}
   .fld input[type=text]{text-align:left}
   .fld input[type=checkbox]{width:auto}
   .empty{color:var(--ink2);font-style:italic}
   .op{display:flex;gap:6px;align-items:center;margin:3px 0}
-  .op input{width:44px;padding:2px 4px;border:1px solid var(--line);border-radius:3px;background:var(--field);text-align:right}
+  .op input{width:44px;padding:6px 6px;border:1px solid var(--line);border-radius:3px;background:var(--field);text-align:right}
   .op .rm{margin-left:auto;color:var(--powder);cursor:pointer}
   .stat{display:flex;justify-content:space-between;color:var(--ink2)}
   .stat b{color:var(--ink)}
@@ -59,6 +74,16 @@
   .good{color:var(--ok)}
   .rmbtn{width:100%;margin-top:8px;padding:6px;border:1px solid #e0b9b0;background:#fbeeeb;
     color:var(--powder);border-radius:4px;cursor:pointer}
+
+  /* phone-width layout: properties panel becomes a slide-over drawer */
+  @media (max-width:700px){
+    .app{grid-template-columns:58px 1fr;grid-template-rows:auto 1fr}
+    .side{position:fixed;top:0;right:0;bottom:0;width:min(86vw,320px);
+      transform:translateX(100%);transition:transform .2s ease;z-index:20;
+      box-shadow:-8px 0 24px #0003}
+    .side.open{transform:translateX(0)}
+    .sidetoggle{display:grid;place-items:center}
+  }
 </style>
 
 <div class="app">
@@ -79,9 +104,13 @@
   <div class="stage">
     <canvas id="c"></canvas>
     <div class="hint" id="hint"></div>
+    <div class="walltools" id="walltools">
+      <button id="wallFinish">&check; Finish</button>
+      <button id="wallCancel">&cross; Cancel</button>
+    </div>
   </div>
 
-  <div class="side">
+  <div class="side" id="side">
     <div class="cap">PLAN DEFAULTS</div>
     <div id="defaults"></div>
     <div class="cap">SELECTED</div>
@@ -90,6 +119,7 @@
     <div id="check"></div>
   </div>
 </div>
+<button class="sidetoggle" id="sidetoggle" title="Properties" aria-label="Toggle properties panel">&#9776;</button>
 
 <script type="module">
 import { buildPlan, validatePlan } from './buildplan.mjs';
@@ -166,8 +196,14 @@ function setTool(id) {
 }
 function hint() {
   document.getElementById('hint').textContent =
-    TOOLS[tool].tip + '   ·   drag empty space or middle-button to pan · scroll to zoom';
+    TOOLS[tool].tip + '   ·   drag empty space to pan · scroll or pinch to zoom';
 }
+function updateWallTools() {
+  document.getElementById('walltools').classList.toggle('show', !!(wallDraft && wallDraft.length));
+}
+document.getElementById('sidetoggle').onclick = () => document.getElementById('side').classList.toggle('open');
+document.getElementById('wallFinish').onclick = () => finishWall();
+document.getElementById('wallCancel').onclick = () => { wallDraft = null; draw(); };
 
 /* ============ canvas + world<->screen =============================== */
 const cv = document.getElementById('c');
@@ -206,6 +242,7 @@ function softRecompute() {          // during drags: rebuild footprints, skip th
 
 /* ============ drawing ============================================== */
 function draw() {
+  updateWallTools();
   ctx.clearRect(0, 0, W, H);
   drawGrid();
   drawGun();
@@ -426,8 +463,30 @@ const ngonPts = el => { const p = []; const n = el.n ?? 8, r = el.r ?? 3;
 
 /* ============ pointer =============================================== */
 let mouseW = null, dragging = null, panning = null, downPt = null, movedFar = false;
+/* a second concurrent finger pinch-zooms/pans instead of dragging/placing --
+   pointers tracks every live touch by id; pinchStart is set while exactly two
+   are down. pinchOccurred marks a gesture that included a pinch, so the LAST
+   finger to lift doesn't get misread as a single tap-to-place. */
+const pointers = new Map();
+let pinchStart = null, pinchOccurred = false;
 cv.addEventListener('pointerdown', e => {
-  cv.setPointerCapture(e.pointerId);
+  try { cv.setPointerCapture(e.pointerId); } catch {}
+  pointers.set(e.pointerId, { x:e.offsetX, y:e.offsetY });
+
+  if (pointers.size === 2) {
+    dragging = null; panning = null; pinchOccurred = true;
+    const [a, b] = [...pointers.values()];
+    pinchStart = {
+      d: Math.hypot(a.x - b.x, a.y - b.y),
+      scale: view.scale,
+      midWX: wx((a.x + b.x) / 2),
+      midWZ: wz((a.y + b.y) / 2),
+    };
+    return;
+  }
+  if (pointers.size > 2) return;   // ignore a 3rd+ finger
+
+  pinchOccurred = false;
   const x = snap(wx(e.offsetX)), z = snap(wz(e.offsetY));
   downPt = { sx:e.offsetX, sy:e.offsetY, x, z }; movedFar = false;
 
@@ -446,6 +505,18 @@ cv.addEventListener('pointerdown', e => {
   }
 });
 cv.addEventListener('pointermove', e => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x:e.offsetX, y:e.offsetY });
+
+  if (pinchStart && pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    view.scale = Math.max(4, Math.min(60, pinchStart.scale * (d / pinchStart.d)));
+    const midX = (a.x + b.x) / 2, midY = (a.y + b.y) / 2;
+    view.ox = pinchStart.midWX - (midX - W / 2) / view.scale;
+    view.oz = pinchStart.midWZ - (midY - H / 2) / view.scale;
+    draw(); return;
+  }
+
   mouseW = [snap(wx(e.offsetX)), snap(wz(e.offsetY))];
   if (downPt && Math.hypot(e.offsetX - downPt.sx, e.offsetY - downPt.sy) > 3) movedFar = true;
 
@@ -457,7 +528,18 @@ cv.addEventListener('pointermove', e => {
   if (dragging) { moveBy(dragging, mouseW[0], mouseW[1]); softRecompute(); return; }
   if (wallDraft) draw();
 });
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinchStart = null;
+  if (pointers.size >= 1 || pinchOccurred) {
+    if (pointers.size === 0) { pinchOccurred = false; downPt = null; dragging = null; panning = null; }
+    return true;   // gesture absorbed by pinch handling, not a plain tap/drag end
+  }
+  return false;
+}
 cv.addEventListener('pointerup', e => {
+  if (endPointer(e)) return;
+
   if (panning) { panning = null; downPt = null; return; }
   if (dragging) { dragging = null; downPt = null; recompute(); syncInspector(); return; }
 
@@ -465,6 +547,7 @@ cv.addEventListener('pointerup', e => {
   if (!movedFar) placeAt(x, z, wx(e.offsetX), wz(e.offsetY));
   downPt = null;
 });
+cv.addEventListener('pointercancel', e => { endPointer(e); });
 cv.addEventListener('dblclick', () => { if (tool === 'wall' || tool === 'fence') finishWall(); });
 cv.addEventListener('wheel', e => {
   e.preventDefault();
@@ -759,7 +842,7 @@ document.getElementById('copy').onclick = async () => {
 document.getElementById('toviewer').onclick = () => {
   try { localStorage.setItem('siege.pendingPlan', JSON.stringify(cleanPlan())); }
   catch (e) { flashHint('hand-off blocked: ' + e.message); return; }
-  window.open('index.html', '_blank');
+  window.open('viewer.html', '_blank');
 };
 const fileEl = document.getElementById('file');
 document.getElementById('open').onclick = () => fileEl.click();

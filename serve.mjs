@@ -11,7 +11,7 @@ const TYPES = {
 
 createServer(async (req, res) => {
   let path = decodeURIComponent(req.url.split('?')[0]);
-  if (path === '/') path = '/viewer.html';
+  if (path === '/') path = '/menu.html';
   const file = join(process.cwd(), normalize(path).replace(/^(\.\.[/\\])+/, ''));
   try {
     const body = await readFile(file);
