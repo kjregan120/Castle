@@ -131,7 +131,7 @@ import { buildPlan, validatePlan } from './buildplan.mjs';
 /* ============ the plan (this IS the exported JSON) =================== */
 const START = {
   name: 'my castle', camera: 34,
-  defaults: { thickness: 0.9, rings: 2, courses: 24, courseH: 0.42, brickL: 0.6 },
+  defaults: { thickness: 0.9, rings: 1, courses: 24, courseH: 0.42, brickL: 0.6 },
   elements: [
     { type: 'tower', id: 'keep', shape: 'square', cx: 0, cz: 0, side: 5.2, crenels: true,
       openings: [{ x: -2.6, z: 0, w: 1.8, from: 0, to: 4 }] },
@@ -807,8 +807,8 @@ function drawDefaults() {
   const mk = (k, step) => num(() => plan.defaults[k], v => { plan.defaults[k] = v; }, step);
   defBox.append(row('camera', num(() => plan.camera ?? 34, v => plan.camera = v, 1)));
   defBox.append(row('thickness', mk('thickness')));
-  defBox.append(row('rings', num(() => plan.defaults.rings, v => plan.defaults.rings = Math.max(1,Math.round(v)), 1)));
-  defBox.append(row('courses', num(() => plan.defaults.courses, v => plan.defaults.courses = Math.max(1,Math.round(v)), 1)));
+  defBox.append(row('walls', choice([1,2,3,4,5], () => plan.defaults.rings, v => plan.defaults.rings = parseInt(v, 10))));
+  defBox.append(row('height', choice(Array.from({length:24}, (_, i) => i + 1), () => plan.defaults.courses, v => plan.defaults.courses = parseInt(v, 10))));
   defBox.append(row('course h', mk('courseH')));
   defBox.append(row('brick len', mk('brickL')));
   const s = document.createElement('div'); s.className='fld';
@@ -840,7 +840,7 @@ function drawCheck() {
 document.getElementById('name').oninput = e => plan.name = e.target.value;
 document.getElementById('new').onclick = () => {
   plan = { name:'my castle', camera:34,
-    defaults:{ thickness:0.9, rings:2, courses:24, courseH:0.42, brickL:0.6 }, elements:[] };
+    defaults:{ thickness:0.9, rings:1, courses:24, courseH:0.42, brickL:0.6 }, elements:[] };
   document.getElementById('name').value = plan.name;
   select(null); drawDefaults(); recompute();
 };
@@ -868,7 +868,7 @@ async function loadFile(f) {
   try {
     const p = JSON.parse(await f.text());
     if (!Array.isArray(p.elements)) throw new Error('not a plan (no elements array)');
-    plan = p; plan.defaults = plan.defaults || { thickness:0.9, rings:2, courses:24, courseH:0.42, brickL:0.6 };
+    plan = p; plan.defaults = plan.defaults || { thickness:0.9, rings:1, courses:24, courseH:0.42, brickL:0.6 };
     document.getElementById('name').value = plan.name || 'castle';
     select(null); drawDefaults(); recompute(); flashHint('loaded ' + (plan.name || f.name));
   } catch (err) { flashHint('could not open: ' + err.message); }
