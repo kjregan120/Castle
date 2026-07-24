@@ -804,13 +804,8 @@ function rmButton() { const b = document.createElement('button'); b.className='r
 const defBox = document.getElementById('defaults');
 function drawDefaults() {
   defBox.innerHTML = '';
-  const mk = (k, step) => num(() => plan.defaults[k], v => { plan.defaults[k] = v; }, step);
-  defBox.append(row('camera', num(() => plan.camera ?? 34, v => plan.camera = v, 1)));
-  defBox.append(row('thickness', mk('thickness')));
   defBox.append(row('walls', choice([1,2,3,4,5], () => plan.defaults.rings, v => plan.defaults.rings = parseInt(v, 10))));
   defBox.append(row('height', choice(Array.from({length:24}, (_, i) => i + 1), () => plan.defaults.courses, v => plan.defaults.courses = parseInt(v, 10))));
-  defBox.append(row('course h', mk('courseH')));
-  defBox.append(row('brick len', mk('brickL')));
   const s = document.createElement('div'); s.className='fld';
   const l = document.createElement('label'); l.textContent = 'snap to ½m';
   s.append(l, bool(() => snapOn, v => snapOn = v)); defBox.append(s);
