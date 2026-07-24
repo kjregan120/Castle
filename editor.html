@@ -20,7 +20,9 @@
   .bar b{letter-spacing:.14em}
   .bar .sp{flex:1}
   .bar input.name{width:190px;padding:5px 8px;border:1px solid var(--line);border-radius:4px;background:var(--field)}
-  .act{padding:9px 14px;border:1px solid var(--line);border-radius:4px;background:var(--field);cursor:pointer}
+  .act{width:40px;height:40px;padding:0;display:grid;place-items:center;
+    border:1px solid var(--line);border-radius:4px;background:var(--field);cursor:pointer}
+  .act svg{width:20px;height:20px}
   .act:hover{border-color:var(--accent)}
   .act.go{background:var(--accent);border-color:var(--accent);color:#fff}
 
@@ -93,8 +95,19 @@
     <b>SIEGE</b><span style="color:var(--ink2)">plan editor</span>
     <input class="name" id="name" value="my castle" spellcheck="false">
     <span class="sp"></span>
-    <button class="act" id="new">new</button>
-    <button class="act go" id="toviewer">open in viewer &rarr;</button>
+    <button class="act" id="new" title="New castle" aria-label="New castle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+        <path d="M14 3v4h4"/>
+        <path d="M12 12v5M9.5 14.5h5"/>
+      </svg>
+    </button>
+    <button class="act go" id="toviewer" title="Open in viewer" aria-label="Open in viewer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M10 8.5l6 3.5-6 3.5z" fill="currentColor" stroke="none"/>
+      </svg>
+    </button>
     <input id="file" type="file" accept="application/json,.json" hidden>
   </div>
 
@@ -111,9 +124,24 @@
 
   <div class="side" id="side">
     <div class="filerow">
-      <button class="act" id="open">open&hellip;</button>
-      <button class="act" id="copy">copy json</button>
-      <button class="act" id="download">download</button>
+      <button class="act" id="open" title="Open a plan" aria-label="Open a plan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>
+        </svg>
+      </button>
+      <button class="act" id="copy" title="Copy plan JSON" aria-label="Copy plan JSON">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="8" y="8" width="12" height="12" rx="1.5"/>
+          <path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>
+        </svg>
+      </button>
+      <button class="act" id="download" title="Download plan JSON" aria-label="Download plan JSON">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v12"/>
+          <path d="M7 10l5 5 5-5"/>
+          <path d="M4 19h16"/>
+        </svg>
+      </button>
     </div>
     <div class="cap">PLAN DEFAULTS</div>
     <div id="defaults"></div>
