@@ -96,14 +96,14 @@ export function buildPlan(plan) {
     switch (el.type) {
       case 'wall': {
         const o = opts(el, plan.defaults);
-        layPath(el.path, { ...o, into: bricks });
+        layPath(el.path, { ...o, into: bricks, elType: 'wall' });
         if (el.id) byId.set(el.id, { el, opts: o });
         break;
       }
       case 'tower': {
         const o = opts(el, plan.defaults);
         o.closed = true;                       // a tower is always closed
-        layPath(towerPath(el), { ...o, into: bricks });
+        layPath(towerPath(el), { ...o, into: bricks, elType: 'tower' });
         if (el.id) byId.set(el.id, { el, opts: o });
         break;
       }

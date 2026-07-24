@@ -75,6 +75,7 @@ export function layPath(path, P = {}) {
     crenels = false,
     openings = [],
     tag = 'stone',
+    elType,
     into = [],
   } = P;
 
@@ -125,7 +126,7 @@ export function layPath(path, P = {}) {
           bricks.push({
             p: [x, y, z],
             h: [w * 0.5 * 0.97, courseH * 0.5 * 0.96, ringDepth * 0.5 * 0.97],
-            yaw, course: c, ring, isBanner: false, tag,
+            yaw, course: c, ring, isBanner: false, tag, elType,
           });
         }
       }

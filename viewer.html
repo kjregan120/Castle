@@ -849,6 +849,37 @@ let won = false, lost = false, settle = 0;
 let roundToken = 0, advanceTimer = null;   // guards the auto-advance timeout against a manual reload in between
 const shots = [];
 
+/* ---------------- staged reveal for freshly-loaded custom castles ----
+   Walls rise first, then scenery, then towers/kegs/banner, then knights
+   drop in last. A brick stays non-physical (alive=0, no Jolt body) until
+   its stage lands; sync()'s existing hide-branch already covers "not
+   started yet" for free -- this only drives the render pose of whichever
+   stage is actively animating, and flips bricks live once it finishes. */
+let growSeq = null, growing = false;
+const GROW_STAGE_DUR = 0.9, GROW_STAGE_GAP = 0.7;
+/* absolute Y a rising/dropping brick starts from -- NOT an offset from its
+   own resting height, since a fixed offset would leave tall tower/knight
+   bricks starting the animation floating above ground instead of hidden
+   below it. Every brick in a stage starts at the same Y and lerps to its
+   own resting height, so taller ones simply travel further in the same
+   window -- reads as the whole shape extruding upward together. */
+const GROW_RISE_Y = -2, GROW_DROP_Y = 30;
+function growStageOf(b) {
+  if (b.knight) return 3;
+  if (b.elType === 'tower' || b.isKeg || b.isBanner) return 2;
+  if (b.tree || b.prop || b.fence) return 1;
+  return 0;   // elType === 'wall', or any other masonry brick
+}
+function beginGrow(bricksIn) {
+  const buckets = [[], [], [], []];
+  for (let i = 0; i < bricksIn.length; i++) buckets[growStageOf(bricksIn[i])].push(i);
+  const stages = buckets.map((indices, s) => ({
+    indices, kind: s === 3 ? 'drop' : 'rise',
+    startAt: s * GROW_STAGE_GAP, dur: GROW_STAGE_DUR, landed: false,
+  }));
+  return { clock: 0, stages };
+}
+
 /* tear the current world and its meshes down */
 function teardown() {
   if (!jolt) return;
@@ -864,7 +895,7 @@ function teardown() {
 /* stand a brick array up in a fresh world and wire the meshes.
    build() (built-in) and loadPlan() (JSON) both funnel through here, so a
    loaded castle behaves exactly like a shipped one. */
-function instantiate(bricksIn, cameraDist) {
+function instantiate(bricksIn, cameraDist, { grow = false } = {}) {
   if (castle) totalScore += castle.destroyedBricks;   // fold the finished castle's tally into the running score
   teardown();
   jolt   = makeWorld();
@@ -874,7 +905,14 @@ function instantiate(bricksIn, cameraDist) {
   castle.installImpactFracture(6.0, 1.6, 2.4);
   castle.crushFactor = CRUSH;
   castle.maxBodies   = 600;    // fragment budget: past this, rubble stops sub-dividing
-  castle.rebuild();            // also calibrates what the intact structure carries
+  if (grow) {
+    castle.alive.fill(0);      // nothing physical yet -- beginGrow() lands each stage as it finishes
+    growSeq = beginGrow(bricks);
+    growing = true;
+  } else {
+    growSeq = null; growing = false;
+    castle.rebuild();          // also calibrates what the intact structure carries
+  }
 
   mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1), stoneMat, bricks.length);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -927,7 +965,7 @@ function build(which) {
 /* start a loaded JSON plan. Validates first and reports, but still stands it
    up even when flawed -- seeing a floating banner in 3D is the fastest way to
    understand the warning. */
-function loadPlan(plan, { register = true } = {}) {
+function loadPlan(plan, { register = true, grow = false } = {}) {
   let brickArr;
   try { brickArr = buildPlan(plan); }
   catch (e) { note('could not build plan: ' + e.message, 'warn'); return; }
@@ -935,7 +973,7 @@ function loadPlan(plan, { register = true } = {}) {
   const name = plan.name || 'loaded plan';
   if (register) custom[name] = plan;
   active = { kind:'custom', name };
-  instantiate(brickArr, plan.camera || 40);
+  instantiate(brickArr, plan.camera || 40, { grow });
   setMode('castle');                              // show the loaded castle, highlighted
   if (v.ok) note(`${name}: ${v.stats.bricks} bricks, ${v.stats.kegs} kegs. ready.`, 'ok');
   else note(`${name} loaded with issues:\n- ` + v.issues.join('\n- '), 'warn');
@@ -1070,7 +1108,7 @@ function updateTrajectoryPreview(clientX, clientY) {
 }
 
 function fire(target) {
-  if (rounds <= 0 || won) return;
+  if (rounds <= 0 || won || growing) return;
   const A = AMMO[selected];
   // free aim: shoot from wherever the camera is looking, not the fixed
   // cannon -- a small offset in front of the camera so the shot doesn't
@@ -1105,7 +1143,7 @@ function fire(target) {
    pipeline as every other round (castle.fire() takes an arbitrary launch
    point and direction already); only the launch itself differs. */
 function fireNuke(target) {
-  if (won || lost || rounds < AMMO.nuke.cost) return;
+  if (won || lost || growing || rounds < AMMO.nuke.cost) return;
   const A = AMMO.nuke;
   rounds -= A.cost;
   nukeUsed = true;
@@ -1281,6 +1319,84 @@ function sync() {
   }
 }
 
+/* castle.rebuild() captures live poses into castle.world via brickTransforms(),
+   which stamps -999 onto any brick that isn't alive yet -- meant to mark
+   destroyed rubble, but it just as happily overwrites a not-yet-grown brick's
+   cached position. Left alone, that -999 corrupts the compound's centroid
+   math the moment that brick's own stage finally lands (it's what's still in
+   castle.world by then). Restore the real design pose for every still-ungrown
+   brick right after each rebuild(), so it stays correct until its turn. */
+function reseedUngrownWorld() {
+  for (let i = 0; i < bricks.length; i++) {
+    if (castle.alive[i]) continue;
+    const b = bricks[i], h = (b.yaw || 0) * 0.5;
+    const w = castle.world;
+    w[i*7] = b.p[0]; w[i*7+1] = b.p[1]; w[i*7+2] = b.p[2];
+    w[i*7+3] = 0; w[i*7+4] = Math.sin(h); w[i*7+5] = 0; w[i*7+6] = Math.cos(h);
+  }
+}
+
+/* advance the staged reveal: land whichever stage's window just closed
+   (flip its bricks alive + one rebuild(), so they spawn already resting at
+   their real pose -- no pop, no fall) and finish up once every stage has. */
+function advanceGrow(dt) {
+  if (!growSeq) return;
+  growSeq.clock += dt;
+  for (const stage of growSeq.stages) {
+    if (stage.landed || growSeq.clock < stage.startAt + stage.dur) continue;
+    for (const i of stage.indices) castle.alive[i] = 1;
+    castle.rebuild();
+    reseedUngrownWorld();
+    stage.landed = true;
+  }
+  if (growSeq.stages.every(s => s.landed)) {
+    // rebuild() calibrates h0/nominalLoad off whatever was alive on the
+    // FIRST call it ever sees -- which was only the walls stage. Now that
+    // everything has landed, redo both against the complete castle.
+    castle.h0 = castle.bannerHeight();
+    castle.nominalLoad = null;
+    castle.loadPass();
+    growSeq = null;
+    growing = false;
+  }
+}
+
+/* render whichever stage is mid-flight (rising out of the ground, or for
+   knights, dropping in) -- stages that haven't started stay covered by
+   sync()'s existing !alive hide-branch, so there's nothing to do for those. */
+function syncGrow() {
+  if (!growSeq) return;
+  const now = growSeq.clock;
+  let touchedMesh = false, touchedKeg = false;
+  for (const stage of growSeq.stages) {
+    if (stage.landed || now < stage.startAt) continue;
+    const t = Math.min(1, (now - stage.startAt) / stage.dur);
+    const e = 1 - Math.pow(1 - t, 3);   // ease-out cubic
+    const startY = stage.kind === 'drop' ? GROW_DROP_Y : GROW_RISE_Y;
+    for (const i of stage.indices) {
+      const b = bricks[i];
+      const y = startY + (b.p[1] - startY) * e;
+      dummy.position.set(b.p[0], y, b.p[2]);
+      dummy.rotation.set(0, b.yaw || 0, 0);
+      if (b.isKeg) {
+        const k = kegIdx.indexOf(i);
+        if (k < 0) continue;
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        kegMesh.setMatrixAt(k, dummy.matrix);
+        touchedKeg = true;
+      } else {
+        dummy.scale.set(b.h[0]*2, b.h[1]*2, b.h[2]*2);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        touchedMesh = true;
+      }
+    }
+  }
+  if (touchedMesh) mesh.instanceMatrix.needsUpdate = true;
+  if (touchedKeg && kegMesh) kegMesh.instanceMatrix.needsUpdate = true;
+}
+
 /* ---------------- camera + click/tap to fire -------------------------
    One pointer-event system covers mouse, touch and pen: a single pointer
    drags to orbit, two fingers pinch to zoom (there's no wheel on a phone),
@@ -1349,7 +1465,7 @@ const chargeMat = new THREE.MeshBasicMaterial({ color:0xff2b2b });
 const chargeGeo = new THREE.SphereGeometry(0.22, 10, 8);
 
 function placeCharge(target) {
-  if (won || lost || rounds <= 0 || charges.length >= 20) return;
+  if (won || lost || growing || rounds <= 0 || charges.length >= 20) return;
   rounds--;
   const m = new THREE.Mesh(chargeGeo, chargeMat);
   m.position.set(target.x, target.y + 0.15, target.z);
@@ -1361,7 +1477,7 @@ function placeCharge(target) {
 }
 
 function detonateAllCharges() {
-  if (!charges.length || won || lost) return;
+  if (!charges.length || won || lost || growing) return;
   castle.detonateCharges(charges.map(c => ({ x:c.x, y:c.y, z:c.z, spec:CHARGE_SPEC })));
   castle.commitDamage();
   clearCharges();             // also turns placing mode off -- the cycle's done
@@ -1472,14 +1588,14 @@ addEventListener('drop', async e => {
   e.preventDefault(); dropEl.style.display = 'none';
   const f = e.dataTransfer.files[0];
   if (!f) return;
-  try { loadPlan(JSON.parse(await f.text())); }
+  try { loadPlan(JSON.parse(await f.text()), { grow: true }); }
   catch (err) { note('that file is not a plan: ' + err.message, 'warn'); }
 });
 const file = document.getElementById('file');
 document.getElementById('loadbtn').onclick = () => file.click();
 file.onchange = async () => {
   const f = file.files[0]; if (!f) return;
-  try { loadPlan(JSON.parse(await f.text())); }
+  try { loadPlan(JSON.parse(await f.text()), { grow: true }); }
   catch (err) { note('that file is not a plan: ' + err.message, 'warn'); }
   file.value = '';
 };
@@ -1489,7 +1605,7 @@ function pickupHandoff() {
   let raw = null;
   try { raw = localStorage.getItem('siege.pendingPlan'); localStorage.removeItem('siege.pendingPlan'); } catch {}
   if (!raw) return false;
-  try { loadPlan(JSON.parse(raw)); return true; } catch { return false; }
+  try { loadPlan(JSON.parse(raw), { grow: true }); return true; } catch { return false; }
 }
 
 /* ---------------- hud ------------------------------------------------- */
@@ -1822,13 +1938,15 @@ function frame() {
   }
   if (flashT > 0) { flashT -= dt; flash.intensity = Math.max(0, flashT * 900); }
 
+  advanceGrow(dt);
   sync();
+  syncGrow();
   updateHud();
 
-  if (!won && !lost && castle.bannerDown()) {
+  if (!won && !lost && !growing && castle.bannerDown()) {
     settle += dt;
     if (settle > 0.8) { won = true; onRoundEnd(true); }
-  } else if (!won && !lost && rounds === 0 && shots.length === 0 && charges.length === 0 && castle.awake() === 0) {
+  } else if (!won && !lost && !growing && rounds === 0 && shots.length === 0 && charges.length === 0 && castle.awake() === 0) {
     lost = true; onRoundEnd(false);   // armed, undetonated charges are a reason to keep the round alive
   }
 
